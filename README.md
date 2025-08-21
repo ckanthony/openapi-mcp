@@ -5,6 +5,8 @@
 [![codecov](https://codecov.io/gh/ckanthony/openapi-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/ckanthony/openapi-mcp)
 ![](https://badge.mcpx.dev?type=dev 'MCP Dev')
 
+[![Trust Score](https://archestra.ai/mcp-catalog/api/badge/quality/ckanthony/openapi-mcp)](https://archestra.ai/mcp-catalog/ckanthony__openapi-mcp)
+
 ![openapi-mcp logo](openapi-mcp.png)
 
 **Generate MCP tool definitions directly from a Swagger/OpenAPI specification file.**
