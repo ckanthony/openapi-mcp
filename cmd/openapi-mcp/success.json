@@ -1,0 +1,14 @@
+{
+    "jsonrpc": "2.0",
+    "result": {
+        "content": [
+            {
+                "type": "text",
+                "text": "{\"data\":{\"access_token\":\"nQnajXjlPfVFF6HxRYoXn2jMsPojpJXIRIqy9QZ3NLKNAvmdNjyn5zzSDbK7YLc3Izt1kmqMTkOUHegka51HfD3_TRRyRQwd7aduk0FgqMkNTuXPPZNDrajKt3XZbdwG50jAxWQ_Fg1whEY6Im6d5yI-uEAz0kw0gjFXb9tbJOnosnQVmxNhM77iitzZmXABAuhOTB3-SLk5Lyx0z7qzQhtyZRdu5k5Z2YmNDT0G-h13S0Ght-BuSU9xY9V8XxHq8ajsmWHScsHEmrSVUKjK7Oms0JU3cOgmaRofBoRanytfLjuK_JSVCE23UcTETqlo4QEp-aqWNRJPv6eL6D-Mw8u4XndcUtm2sBRdefAFdXGIVenRTipMsaLsXeOtsS648-TcD1yTnOxZymBMRYFnN2Chsk-hzZWn3khOtg-dZFrRvhIFRY8PmJScSGqkbUoTuA1TtVTtd7QPb3zqFh_qzjwYYH3K36E8dpe35cCNwpI-wZw-zu--iRCjgH0KJ0c2oB4KtDw7lCYPKZmGJEHY5XP5d7bH3qPWHZIgJ9twGQW5fGcO9IB6IOXm3eliDFmxI5SDXoo4mVtJBIiCmvbEmkZ-1l9dn3XfwMeO2If7e8TWDJes\u0026W10=\u0026MQ==\",\"expires_in\":86399,\"refresh_token\":\"b2694067530347d1aeebe08386d4fe7f\",\"user_id\":\"10\",\"user_code\":\"10\",\"refreshToken_expires\":\"2025-11-30T16:10:59.8096210+00:00\",\"re_ceased_contact_info\":null,\"accept_terms\":[{\"name\":\"platform-terms-and-conditions\",\"accepted\":true,\"context\":null}]},\"success\":true}"
+            }
+        ],
+        "statusCode": 200,
+        "tool_call_id": "test-valid"
+    },
+    "id": "test-valid"
+}

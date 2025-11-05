@@ -79,8 +79,9 @@ type ToolResultContent struct {
 
 // ToolResultPayload represents the structure for the 'result' of a 'tool_result' JSON-RPC response.
 type ToolResultPayload struct {
-	Content    []ToolResultContent `json:"content"`                // Array of content items
-	IsError    bool                `json:"isError"`                // Aligning with gin-mcp
+	Content    []ToolResultContent `json:"content"`                // Array of content items (always populated)
+	IsError    bool                `json:"isError,omitempty"`      // Optional: true if error occurred
+	StatusCode int                 `json:"statusCode,omitempty"`   // HTTP status code from API call
 	Error      *MCPError           `json:"error,omitempty"`        // Detailed error info if IsError is true
 	ToolCallID string              `json:"tool_call_id,omitempty"` // Optional: Can be helpful
 }
@@ -792,8 +793,16 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 	var resultPayload ToolResultPayload
 	if execErr != nil {
 		log.Printf("Error executing tool call '%s': %v", params.ToolName, execErr)
+		// Populate content with error message
+		resultContent := []ToolResultContent{
+			{
+				Type: "text",
+				Text: fmt.Sprintf("Failed to execute tool '%s': %v", params.ToolName, execErr),
+			},
+		}
 		resultPayload = ToolResultPayload{
-			IsError: true,
+			Content:    resultContent,
+			IsError:    true,
 			Error: &MCPError{
 				Message: fmt.Sprintf("Failed to execute tool '%s': %v", params.ToolName, execErr),
 			},
@@ -804,8 +813,16 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 		bodyBytes, readErr := io.ReadAll(httpResp.Body)
 		if readErr != nil {
 			log.Printf("Error reading response body for tool '%s': %v", params.ToolName, readErr)
+			// Populate content with error message
+			resultContent := []ToolResultContent{
+				{
+					Type: "text",
+					Text: fmt.Sprintf("Failed to read response from tool '%s': %v", params.ToolName, readErr),
+				},
+			}
 			resultPayload = ToolResultPayload{
-				IsError: true,
+				Content:    resultContent,
+				IsError:    true,
 				Error: &MCPError{
 					Message: fmt.Sprintf("Failed to read response from tool '%s': %v", params.ToolName, readErr),
 				},
@@ -815,12 +832,20 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 			log.Printf("Received response body for tool '%s': %s", params.ToolName, string(bodyBytes))
 			// Check status code for API-level errors
 			if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
+				// Error case: populate content with the error response body
+				resultContent := []ToolResultContent{
+					{
+						Type: "text",
+						Text: string(bodyBytes),
+					},
+				}
 				resultPayload = ToolResultPayload{
-					IsError: true,
+					Content:    resultContent,
+					IsError:    true,
+					StatusCode: httpResp.StatusCode,
 					Error: &MCPError{
 						Code:    httpResp.StatusCode,
 						Message: fmt.Sprintf("Tool '%s' API call failed with status %s", params.ToolName, httpResp.Status),
-						Data:    string(bodyBytes), // Include response body in error data
 					},
 					ToolCallID: fmt.Sprintf("%v", req.ID),
 				}
@@ -834,6 +859,7 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 				}
 				resultPayload = ToolResultPayload{
 					Content:    resultContent,
+					StatusCode: httpResp.StatusCode,
 					IsError:    false,
 					ToolCallID: fmt.Sprintf("%v", req.ID),
 				}
