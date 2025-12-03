@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/ckanthony/openapi-mcp/pkg/config"
 	"github.com/ckanthony/openapi-mcp/pkg/mcp"
+	"github.com/ckanthony/openapi-mcp/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -378,7 +378,7 @@ func TestHttpMethodGetHandler(t *testing.T) {
 		for id, ch := range activeConnections {
 			close(ch)
 			delete(activeConnections, id)
-			log.Printf("[DEFER Cleanup] Closed channel and removed connection %s", id)
+			utils.SafeLogPrintf("[DEFER Cleanup] Closed channel and removed connection %s", id)
 		}
 		activeConnections = originalConnections // Restore the original map
 		connMutex.Unlock()
@@ -872,7 +872,7 @@ func (m *sseMockResponseWriter) Write(p []byte) (int, error) {
 	// Check if write count triggers failure
 	if m.failAfterNWrites >= 0 && m.writesMade >= m.failAfterNWrites {
 		m.forceError = fmt.Errorf("forced write error after %d writes", m.failAfterNWrites)
-		log.Printf("DEBUG: sseMockResponseWriter triggering error: %v", m.forceError) // Debug log
+		utils.SafeLogPrintf("DEBUG: sseMockResponseWriter triggering error: %v", m.forceError) // Debug log
 		return 0, m.forceError
 	}
 
@@ -1002,7 +1002,7 @@ func TestHttpMethodGetHandler_GoroutineErrors(t *testing.T) {
 		go func() {
 			defer close(done)
 			httpMethodGetHandler(mockWriter, req)
-			log.Println("DEBUG: httpMethodGetHandler goroutine exited")
+			utils.SafeLogPrintln("DEBUG: httpMethodGetHandler goroutine exited")
 		}()
 
 		// Wait for the connection to be established
@@ -1012,7 +1012,7 @@ func TestHttpMethodGetHandler_GoroutineErrors(t *testing.T) {
 			for id, ch := range activeConnections {
 				connID = id
 				msgChan = ch
-				log.Printf("DEBUG: Connection established: %s", connID)
+				utils.SafeLogPrintf("DEBUG: Connection established: %s", connID)
 				return true
 			}
 			return false
@@ -1023,10 +1023,10 @@ func TestHttpMethodGetHandler_GoroutineErrors(t *testing.T) {
 
 		// Send a message that should trigger the write error
 		testResp := jsonRPCResponse{Jsonrpc: "2.0", ID: "test-msg-1", Result: "test data"}
-		log.Printf("DEBUG: Sending test message to channel for %s", connID)
+		utils.SafeLogPrintf("DEBUG: Sending test message to channel for %s", connID)
 		select {
 		case msgChan <- testResp:
-			log.Printf("DEBUG: Test message sent to channel for %s", connID)
+			utils.SafeLogPrintf("DEBUG: Test message sent to channel for %s", connID)
 		case <-time.After(100 * time.Millisecond):
 			t.Fatal("Timeout sending message to channel")
 		}
@@ -1034,7 +1034,7 @@ func TestHttpMethodGetHandler_GoroutineErrors(t *testing.T) {
 		// Wait for the handler goroutine to finish due to the write error
 		select {
 		case <-done:
-			log.Printf("DEBUG: Handler goroutine finished as expected after message write error")
+			utils.SafeLogPrintf("DEBUG: Handler goroutine finished as expected after message write error")
 			// Handler finished (presumably due to write error)
 		case <-time.After(1000 * time.Millisecond): // Increased timeout to 1 second
 			t.Fatal("Timeout waiting for httpMethodGetHandler goroutine to exit after message write error")
