@@ -38,6 +38,10 @@ Run the demo yourself: [Running the Weatherbit Example (Step-by-Step)](#running-
 -   **Local & Remote Specs:** Works with local specification files or remote URLs.
 -   **Dockerized Tool:** Easily deploy and run as a containerized service with Docker.
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/ckanthony-openapi-mcp).
+
 ## Features
 
 -   **OpenAPI v2 (Swagger) & v3 Support:** Parses standard specification formats.
