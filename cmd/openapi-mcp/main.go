@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/ckanthony/openapi-mcp/pkg/config"
 	"github.com/ckanthony/openapi-mcp/pkg/parser"
 	"github.com/ckanthony/openapi-mcp/pkg/server"
+	"github.com/ckanthony/openapi-mcp/pkg/utils"
 	"github.com/joho/godotenv"
 )
 
@@ -56,33 +56,33 @@ func main() {
 	// --- Load .env after parsing flags ---
 	if *specPath != "" && !strings.HasPrefix(*specPath, "http://") && !strings.HasPrefix(*specPath, "https://") {
 		envPath := filepath.Join(filepath.Dir(*specPath), ".env")
-		log.Printf("Attempting to load .env file from spec directory: %s", envPath)
+		utils.SafeLogPrintf("Attempting to load .env file from spec directory: %s", envPath)
 		err := godotenv.Load(envPath)
 		if err != nil {
 			// It's okay if the file doesn't exist, log other errors.
 			if !os.IsNotExist(err) {
-				log.Printf("Warning: Error loading .env file from %s: %v", envPath, err)
+				utils.SafeLogPrintf("Warning: Error loading .env file from %s: %v", envPath, err)
 			} else {
-				log.Printf("Info: No .env file found at %s, proceeding without it.", envPath)
+				utils.SafeLogPrintf("Info: No .env file found at %s, proceeding without it.", envPath)
 			}
 		} else {
-			log.Printf("Successfully loaded .env file from %s", envPath)
+			utils.SafeLogPrintf("Successfully loaded .env file from %s", envPath)
 		}
 	} else if *specPath == "" {
-		log.Println("Skipping .env load because --spec is missing.")
+		utils.SafeLogPrintln("Skipping .env load because --spec is missing.")
 	} else {
-		log.Println("Skipping .env load because spec path appears to be a URL.")
+		utils.SafeLogPrintln("Skipping .env load because spec path appears to be a URL.")
 	}
 
 	// --- Read REQUEST_HEADERS env var ---
 	customHeadersEnv := os.Getenv("REQUEST_HEADERS")
 	if customHeadersEnv != "" {
-		log.Printf("Found REQUEST_HEADERS environment variable: %s", customHeadersEnv)
+		utils.SafeLogPrintf("Found REQUEST_HEADERS environment variable: %s", customHeadersEnv)
 	}
 
 	// --- Input Validation ---
 	if *specPath == "" {
-		log.Println("Error: --spec flag is required.")
+		utils.SafeLogPrintln("Error: --spec flag is required.")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -99,7 +99,8 @@ func main() {
 		case string(config.APIKeyLocationCookie):
 			apiKeyLocation = config.APIKeyLocationCookie
 		default:
-			log.Fatalf("Error: invalid --api-key-loc value: %s. Must be 'header', 'query', 'path', or 'cookie'.", *apiKeyLocStr)
+			utils.SafeLogPrintln("Error: invalid --api-key-loc value:", *apiKeyLocStr, "Must be 'header', 'query', 'path', or 'cookie'.")
+			os.Exit(1)
 		}
 	}
 
@@ -120,27 +121,28 @@ func main() {
 		CustomHeaders:     customHeadersEnv,
 	}
 
-	log.Printf("Configuration loaded: %+v\n", cfg)
-	log.Println("API Key (resolved):", cfg.GetAPIKey())
+	utils.SafeLogPrintln("Configuration loaded.")
+	utils.SafeLogPrintln("API Key (resolved):", cfg.GetAPIKey())
 
 	// --- Call Parser ---
 	specDoc, version, err := parser.LoadSwagger(cfg.SpecPath)
 	if err != nil {
-		log.Fatalf("Failed to load OpenAPI/Swagger spec: %v", err)
+		utils.SafeLogFatalf("Failed to load OpenAPI/Swagger spec: %v", err)
 	}
-	log.Printf("Spec type %s loaded successfully from %s.\n", version, cfg.SpecPath)
+	utils.SafeLogPrintln("Spec type", version, "loaded successfully from", cfg.SpecPath)
 
 	toolSet, err := parser.GenerateToolSet(specDoc, version, cfg)
 	if err != nil {
-		log.Fatalf("Failed to generate MCP toolset: %v", err)
+		utils.SafeLogFatalf("Failed to generate MCP toolset: %v", err)
 	}
-	log.Printf("MCP toolset generated with %d tools.\n", len(toolSet.Tools))
+	utils.SafeLogPrintln("MCP toolset generated with", len(toolSet.Tools), "tools.")
 
 	// --- Start Server ---
 	addr := fmt.Sprintf(":%d", *port)
-	log.Printf("Starting MCP server on %s...", addr)
+	utils.SafeLogPrintf("Starting MCP server on %s...", addr)
 	err = server.ServeMCP(addr, toolSet, cfg) // Pass cfg to ServeMCP
 	if err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		utils.SafeLogPrintln("Failed to start server:", err)
+	  os.Exit(1)
 	}
 }
