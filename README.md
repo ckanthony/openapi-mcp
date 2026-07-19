@@ -21,6 +21,7 @@ OpenAPI-MCP is a dockerized MCP server that reads a `swagger.json` or `openapi.y
     -   [Using the Pre-built Docker Hub Image (Recommended)](#using-the-pre-built-docker-hub-image-recommended)
     -   [Building Locally (Optional)](#building-locally-optional)
 -   [Running the Weatherbit Example (Step-by-Step)](#running-the-weatherbit-example-step-by-step)
+-   [Running the Xquik API Example](#running-the-xquik-api-example)
 -   [Command-Line Options](#command-line-options)
     -   [Environment Variables](#environment-variables)
 
@@ -185,6 +186,27 @@ A `docker-compose.yml` file is provided in the `example/` directory to demonstra
     *   The MCP server will be available at `http://localhost:8080`.
 
 3.  **Stop the service:** Press `Ctrl+C` in the terminal where Compose is running, or run `docker-compose down` from the `example` directory in another terminal.
+
+## Running the Xquik API Example
+
+Xquik publishes an OpenAPI 3.1 document for X/Twitter automation workflows at
+`https://xquik.com/openapi.json`. Since its API key is passed in the `x-api-key`
+header, it maps directly to OpenAPI-MCP's header API-key options.
+
+```bash
+docker run -p 8080:8080 --rm \
+    -e XQUIK_API_KEY="your_xquik_api_key" \
+    ckanthony/openapi-mcp:latest \
+    --spec https://xquik.com/openapi.json \
+    --api-key-env XQUIK_API_KEY \
+    --api-key-name x-api-key \
+    --api-key-loc header \
+    --include-tag Trends \
+    --include-tag Tweets
+```
+
+Use the tag filters to keep the generated MCP surface focused on X/Twitter
+search and trend workflows. Remove them if you want the full Xquik API surface.
 
 ## Command-Line Options
 
