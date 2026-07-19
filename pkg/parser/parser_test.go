@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -558,6 +560,37 @@ func TestLoadSwagger(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLoadSwaggerRedactsRemoteLocationSecrets(t *testing.T) {
+	var logs bytes.Buffer
+	originalLogOutput := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() {
+		log.SetOutput(originalLogOutput)
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "response-secret", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	location := strings.Replace(server.URL, "http://", "http://user-secret:password-secret@", 1) +
+		"/openapi.json?token=query-secret"
+	_, _, err := LoadSwagger(location)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "status code 500")
+	assert.Contains(t, logs.String(), "/openapi.json")
+	for _, secret := range []string{
+		"user-secret",
+		"password-secret",
+		"query-secret",
+		"response-secret",
+	} {
+		assert.NotContains(t, err.Error(), secret)
+		assert.NotContains(t, logs.String(), secret)
 	}
 }
 

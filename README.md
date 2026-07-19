@@ -193,6 +193,8 @@ Xquik publishes an OpenAPI 3.1 document for X/Twitter automation workflows at
 `https://xquik.com/openapi.json`. Since its API key is passed in the `x-api-key`
 header, it maps directly to OpenAPI-MCP's header API-key options.
 
+Xquik is an independent third-party service. Not affiliated with X Corp. "Twitter" and "X" are trademarks of X Corp.
+
 ```bash
 docker run -p 8080:8080 --rm \
     -e XQUIK_API_KEY="your_xquik_api_key" \
