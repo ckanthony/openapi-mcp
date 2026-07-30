@@ -32,16 +32,20 @@ func LoadSwagger(location string) (interface{}, string, error) {
 	// Determine if location is URL or file path
 	locationURL, urlErr := url.ParseRequestURI(location)
 	isURL := urlErr == nil && locationURL != nil && (locationURL.Scheme == "http" || locationURL.Scheme == "https")
+	displayLocation := location
+	if isURL {
+		displayLocation = locationForLog(locationURL)
+	}
 
 	var data []byte
 	var err error
 	var absPath string // Store absolute path if it's a file
 
 	if !isURL {
-		log.Printf("Detected file path location: %s", location)
+		log.Printf("Detected file path location: %s", displayLocation)
 		absPath, err = filepath.Abs(location)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to get absolute path for '%s': %w", location, err)
+			return nil, "", fmt.Errorf("failed to get absolute path for '%s': %w", displayLocation, err)
 		}
 		// Read data first for version detection
 		data, err = os.ReadFile(absPath)
@@ -49,27 +53,34 @@ func LoadSwagger(location string) (interface{}, string, error) {
 			return nil, "", fmt.Errorf("failed reading file path '%s': %w", absPath, err)
 		}
 	} else {
-		log.Printf("Detected URL location: %s", location)
+		log.Printf("Detected URL location: %s", displayLocation)
 		// Read data first for version detection
 		resp, err := http.Get(location)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to fetch URL '%s': %w", location, err)
+			return nil, "", fmt.Errorf(
+				"failed to fetch URL '%s': %w",
+				displayLocation,
+				errorForLog(err, location, displayLocation),
+			)
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			bodyBytes, _ := io.ReadAll(resp.Body) // Attempt to read body for error context
-			return nil, "", fmt.Errorf("failed to fetch URL '%s': status code %d, body: %s", location, resp.StatusCode, string(bodyBytes))
+			return nil, "", fmt.Errorf("failed to fetch URL '%s': status code %d", displayLocation, resp.StatusCode)
 		}
 		data, err = io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to read response body from URL '%s': %w", location, err)
+			return nil, "", fmt.Errorf(
+				"failed to read response body from URL '%s': %w",
+				displayLocation,
+				errorForLog(err, location, displayLocation),
+			)
 		}
 	}
 
 	// Detect version from data
 	var detector map[string]interface{}
 	if err := json.Unmarshal(data, &detector); err != nil {
-		return nil, "", fmt.Errorf("failed to parse JSON from '%s' for version detection: %w", location, err)
+		return nil, "", fmt.Errorf("failed to parse JSON from '%s' for version detection: %w", displayLocation, err)
 	}
 
 	if _, ok := detector["openapi"]; ok {
@@ -85,28 +96,71 @@ func LoadSwagger(location string) (interface{}, string, error) {
 			doc, loadErr = loader.LoadFromFile(absPath)
 		} else {
 			// Use LoadFromURI for URLs
-			log.Printf("Loading V3 spec using LoadFromURI: %s", location)
+			log.Printf("Loading V3 spec using LoadFromURI: %s", displayLocation)
 			doc, loadErr = loader.LoadFromURI(locationURL)
 		}
 
 		if loadErr != nil {
-			return nil, "", fmt.Errorf("failed to load OpenAPI v3 spec from '%s': %w", location, loadErr)
+			return nil, "", fmt.Errorf(
+				"failed to load OpenAPI v3 spec from '%s': %w",
+				displayLocation,
+				errorForLog(loadErr, location, displayLocation),
+			)
 		}
 
 		if err := doc.Validate(context.Background()); err != nil {
-			return nil, "", fmt.Errorf("OpenAPI v3 spec validation failed for '%s': %w", location, err)
+			return nil, "", fmt.Errorf(
+				"OpenAPI v3 spec validation failed for '%s': %w",
+				displayLocation,
+				errorForLog(err, location, displayLocation),
+			)
 		}
 		return doc, VersionV3, nil
 	} else if _, ok := detector["swagger"]; ok {
 		// Swagger 2.0 - Still load from data as loads.Analyzed expects bytes
-		log.Printf("Loading V2 spec using loads.Analyzed from data (source: %s)", location)
+		log.Printf("Loading V2 spec using loads.Analyzed from data (source: %s)", displayLocation)
 		doc, err := loads.Analyzed(data, "2.0")
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to load or validate Swagger v2 spec from '%s': %w", location, err)
+			return nil, "", fmt.Errorf(
+				"failed to load or validate Swagger v2 spec from '%s': %w",
+				displayLocation,
+				errorForLog(err, location, displayLocation),
+			)
 		}
 		return doc.Spec(), VersionV2, nil
 	} else {
-		return nil, "", fmt.Errorf("failed to detect OpenAPI/Swagger version in '%s': missing 'openapi' or 'swagger' key", location)
+		return nil, "", fmt.Errorf("failed to detect OpenAPI/Swagger version in '%s': missing 'openapi' or 'swagger' key", displayLocation)
+	}
+}
+
+func locationForLog(location *url.URL) string {
+	sanitized := *location
+	sanitized.User = nil
+	sanitized.RawQuery = ""
+	sanitized.ForceQuery = false
+	sanitized.Fragment = ""
+	return sanitized.String()
+}
+
+type redactedLocationError struct {
+	err             error
+	location        string
+	displayLocation string
+}
+
+func (e redactedLocationError) Error() string {
+	return strings.ReplaceAll(e.err.Error(), e.location, e.displayLocation)
+}
+
+func (e redactedLocationError) Unwrap() error {
+	return e.err
+}
+
+func errorForLog(err error, location, displayLocation string) error {
+	return redactedLocationError{
+		err:             err,
+		location:        location,
+		displayLocation: displayLocation,
 	}
 }
 

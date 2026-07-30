@@ -26,6 +26,28 @@ func (i *stringSliceFlag) Set(value string) error {
 	return nil
 }
 
+func configurationSummary(cfg *config.Config) string {
+	apiKeySource := "none"
+	if cfg.APIKeyFromEnvVar != "" {
+		apiKeySource = "environment"
+	} else if cfg.APIKey != "" {
+		apiKeySource = "flag"
+	}
+
+	return fmt.Sprintf(
+		"spec_configured=%t api_key_source=%s api_key_name=%q api_key_location=%q include_tags=%d exclude_tags=%d include_operations=%d exclude_operations=%d custom_headers_configured=%t",
+		cfg.SpecPath != "",
+		apiKeySource,
+		cfg.APIKeyName,
+		cfg.APIKeyLocation,
+		len(cfg.IncludeTags),
+		len(cfg.ExcludeTags),
+		len(cfg.IncludeOperations),
+		len(cfg.ExcludeOperations),
+		cfg.CustomHeaders != "",
+	)
+}
+
 func main() {
 	// --- Flag Definitions First ---
 	// Define specPath early so we can use it for .env loading
@@ -77,7 +99,7 @@ func main() {
 	// --- Read REQUEST_HEADERS env var ---
 	customHeadersEnv := os.Getenv("REQUEST_HEADERS")
 	if customHeadersEnv != "" {
-		log.Printf("Found REQUEST_HEADERS environment variable: %s", customHeadersEnv)
+		log.Println("Found REQUEST_HEADERS environment variable.")
 	}
 
 	// --- Input Validation ---
@@ -120,15 +142,14 @@ func main() {
 		CustomHeaders:     customHeadersEnv,
 	}
 
-	log.Printf("Configuration loaded: %+v\n", cfg)
-	log.Println("API Key (resolved):", cfg.GetAPIKey())
+	log.Printf("Configuration loaded: %s", configurationSummary(cfg))
 
 	// --- Call Parser ---
 	specDoc, version, err := parser.LoadSwagger(cfg.SpecPath)
 	if err != nil {
 		log.Fatalf("Failed to load OpenAPI/Swagger spec: %v", err)
 	}
-	log.Printf("Spec type %s loaded successfully from %s.\n", version, cfg.SpecPath)
+	log.Printf("Spec type %s loaded successfully.\n", version)
 
 	toolSet, err := parser.GenerateToolSet(specDoc, version, cfg)
 	if err != nil {
