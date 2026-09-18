@@ -2,28 +2,77 @@ package parser
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ckanthony/openapi-mcp/pkg/config"
+	"github.com/ckanthony/openapi-mcp/pkg/logx"
 	"github.com/ckanthony/openapi-mcp/pkg/mcp"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-openapi/loads"
 	"github.com/go-openapi/spec"
+	"gopkg.in/yaml.v3"
 )
+
+var log = logx.Module("parser")
 
 const (
 	VersionV2 = "v2"
 	VersionV3 = "v3"
 )
+
+// allowedRefSiblings lists the non-extension fields that may legally appear
+// alongside a $ref in the wild. JSON Schema 2020-12 (OpenAPI 3.1) allows any
+// keyword next to $ref; OpenAPI 3.0 does not, yet many real-world 3.0 specs
+// (and spec generators) emit $ref with sibling description/readOnly/type/etc.
+// Allowing them keeps such specs loadable while still validating everything
+// else. kin-openapi only auto-relaxes this for 3.1 documents, so 3.0 specs need
+// the explicit list.
+var allowedRefSiblings = []string{
+	"description", "summary", "title", "type", "format", "items", "properties",
+	"required", "readOnly", "writeOnly", "example", "examples", "default", "enum",
+	"nullable", "deprecated", "allOf", "anyOf", "oneOf", "not", "externalDocs",
+	"xml", "discriminator", "additionalProperties", "minItems", "maxItems",
+	"minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minLength",
+	"maxLength", "pattern", "uniqueItems", "minProperties", "maxProperties",
+	"contentEncoding", "contentMediaType",
+}
+
+// validationOpts returns the validation options applied to every loaded spec.
+func validationOpts() []openapi3.ValidationOption {
+	return []openapi3.ValidationOption{
+		openapi3.DisableExamplesValidation(),
+		openapi3.DisableSchemaDefaultsValidation(),
+		openapi3.AllowExtraSiblingFields(allowedRefSiblings...),
+	}
+}
+
+// detectVersion returns the top-level keys of a spec document when it can be
+// parsed. It is tolerant of both YAML and JSON (YAML is a superset of JSON),
+// so YAML specs remain detectable.
+func detectVersion(data []byte) (map[string]interface{}, error) {
+	detector := map[string]interface{}{}
+	if err := detectVersionInto(data, &detector); err != nil {
+		return nil, err
+	}
+	return detector, nil
+}
+
+// detectVersionInto parses a spec document into a generic map, accepting both
+// JSON and YAML.
+func detectVersionInto(data []byte, out *map[string]interface{}) error {
+	if err := yaml.Unmarshal(data, out); err != nil {
+		return err
+	}
+	return nil
+}
 
 // LoadSwagger detects the version and loads an OpenAPI/Swagger specification
 // from a local file path or a remote URL.
@@ -38,7 +87,7 @@ func LoadSwagger(location string) (interface{}, string, error) {
 	var absPath string // Store absolute path if it's a file
 
 	if !isURL {
-		log.Printf("Detected file path location: %s", location)
+		log.Debug("detected file path location", "location", location)
 		absPath, err = filepath.Abs(location)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to get absolute path for '%s': %w", location, err)
@@ -49,7 +98,7 @@ func LoadSwagger(location string) (interface{}, string, error) {
 			return nil, "", fmt.Errorf("failed reading file path '%s': %w", absPath, err)
 		}
 	} else {
-		log.Printf("Detected URL location: %s", location)
+		log.Debug("detected URL location", "location", location)
 		// Read data first for version detection
 		resp, err := http.Get(location)
 		if err != nil {
@@ -66,26 +115,33 @@ func LoadSwagger(location string) (interface{}, string, error) {
 		}
 	}
 
-	// Detect version from data
-	var detector map[string]interface{}
-	if err := json.Unmarshal(data, &detector); err != nil {
-		return nil, "", fmt.Errorf("failed to parse JSON from '%s' for version detection: %w", location, err)
+	// Detect version from data (YAML or JSON — YAML is a superset).
+	detector, detErr := detectVersion(data)
+	if detErr != nil {
+		return nil, "", fmt.Errorf("failed to parse spec from '%s' for version detection: %w", location, detErr)
 	}
 
 	if _, ok := detector["openapi"]; ok {
 		// OpenAPI 3.x
 		loader := openapi3.NewLoader()
 		loader.IsExternalRefsAllowed = true
+		// Bypass kin-openapi's package-global URI content cache
+		// (openapi3.URIMapCache). That cache is shared across all loaders in the
+		// process and would return the originally-read bytes for a path/URL even
+		// after the underlying file or resource changed. Re-loading a spec whose
+		// source was modified must pick up the fresh content, so read sources
+		// directly (files + HTTP) without caching.
+		loader.ReadFromURIFunc = openapi3.ReadFromURIs(openapi3.ReadFromFile, openapi3.ReadFromHTTP(&http.Client{}))
 		var doc *openapi3.T
 		var loadErr error
 
 		if !isURL {
 			// Use LoadFromFile for local files
-			log.Printf("Loading V3 spec using LoadFromFile: %s", absPath)
+			log.Debug("loading V3 spec from file", "path", absPath)
 			doc, loadErr = loader.LoadFromFile(absPath)
 		} else {
 			// Use LoadFromURI for URLs
-			log.Printf("Loading V3 spec using LoadFromURI: %s", location)
+			log.Debug("loading V3 spec from URL", "url", location)
 			doc, loadErr = loader.LoadFromURI(locationURL)
 		}
 
@@ -93,13 +149,13 @@ func LoadSwagger(location string) (interface{}, string, error) {
 			return nil, "", fmt.Errorf("failed to load OpenAPI v3 spec from '%s': %w", location, loadErr)
 		}
 
-		if err := doc.Validate(context.Background()); err != nil {
+		if err := doc.Validate(context.Background(), validationOpts()...); err != nil {
 			return nil, "", fmt.Errorf("OpenAPI v3 spec validation failed for '%s': %w", location, err)
 		}
 		return doc, VersionV3, nil
 	} else if _, ok := detector["swagger"]; ok {
 		// Swagger 2.0 - Still load from data as loads.Analyzed expects bytes
-		log.Printf("Loading V2 spec using loads.Analyzed from data (source: %s)", location)
+		log.Debug("loading V2 spec from data", "source", location)
 		doc, err := loads.Analyzed(data, "2.0")
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to load or validate Swagger v2 spec from '%s': %w", location, err)
@@ -108,6 +164,197 @@ func LoadSwagger(location string) (interface{}, string, error) {
 	} else {
 		return nil, "", fmt.Errorf("failed to detect OpenAPI/Swagger version in '%s': missing 'openapi' or 'swagger' key", location)
 	}
+}
+
+// SpecSourceETag returns the ETag of an http(s) spec *source*, probed via a
+// cheap HEAD request (empty for file sources or when the server omits ETag).
+// It lets freshness checks compare tags when no Last-Modified header exists.
+func SpecSourceETag(location string) string {
+	_, etag := SpecSourceInfo(location)
+	return etag
+}
+
+// SpecSourceInfo combines SpecSourceModified with an ETag probe in a single
+// HEAD request for http(s) sources. Local paths only yield a modification time.
+func SpecSourceInfo(location string) (time.Time, string) {
+	if location == "" {
+		return time.Time{}, ""
+	}
+	locURL, err := url.ParseRequestURI(location)
+	isURL := err == nil && locURL != nil && (locURL.Scheme == "http" || locURL.Scheme == "https")
+	if !isURL {
+		absPath, err := filepath.Abs(location)
+		if err != nil {
+			return time.Time{}, ""
+		}
+		st, err := os.Stat(absPath)
+		if err != nil {
+			return time.Time{}, ""
+		}
+		return st.ModTime(), ""
+	}
+	// HTTP(S) sources: perform a lightweight HEAD to read Last-Modified and
+	// ETag without downloading the whole spec.
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Head(location)
+	if err != nil {
+		return time.Time{}, ""
+	}
+	defer resp.Body.Close()
+	var mod time.Time
+	if lm := resp.Header.Get("Last-Modified"); lm != "" {
+		if t, err := http.ParseTime(lm); err == nil {
+			mod = t
+		}
+	}
+	return mod, resp.Header.Get("ETag")
+}
+
+// SpecSourceModified returns the last-modified time of an OpenAPI spec *source*:
+// the file modification time for local paths, or the Last-Modified response header
+// for http(s) URLs (probed via a cheap HEAD request). It returns a zero time.Time
+// when the source carries no usable timestamp (e.g. a URL that omits Last-Modified)
+// or when the source cannot be probed, so callers know the freshness is unknown.
+//
+// It is used to track when a spec was last loaded so the MCP server can warn that
+// the in-memory toolset is stale relative to the source on disk/URL.
+func SpecSourceModified(location string) time.Time {
+	mod, _ := SpecSourceInfo(location)
+	return mod
+}
+
+// LoadSwaggerFromBytes detects the version and loads an OpenAPI/Swagger
+// specification from raw JSON bytes (e.g. an inline spec supplied at runtime).
+// origin is used only for error reporting. Self-contained specs are expected;
+// relative $refs are not resolved against a file/URL base.
+func LoadSwaggerFromBytes(data []byte, origin string) (interface{}, string, error) {
+	if origin == "" {
+		origin = "inline spec"
+	}
+	var detector map[string]interface{}
+	if detErr := detectVersionInto(data, &detector); detErr != nil {
+		return nil, "", fmt.Errorf("failed to parse spec from '%s' for version detection: %w", origin, detErr)
+	}
+
+	if _, ok := detector["openapi"]; ok {
+		// OpenAPI 3.x
+		loader := openapi3.NewLoader()
+		loader.IsExternalRefsAllowed = true
+		// Bypass the package-global URI content cache so relative external refs
+		// are resolved fresh (see LoadSwagger for the rationale).
+		loader.ReadFromURIFunc = openapi3.ReadFromURIs(openapi3.ReadFromFile, openapi3.ReadFromHTTP(&http.Client{}))
+		doc, err := loader.LoadFromData(data)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to load OpenAPI v3 spec from '%s': %w", origin, err)
+		}
+		if err := doc.Validate(context.Background(), validationOpts()...); err != nil {
+			return nil, "", fmt.Errorf("OpenAPI v3 spec validation failed for '%s': %w", origin, err)
+		}
+		return doc, VersionV3, nil
+	} else if _, ok := detector["swagger"]; ok {
+		// Swagger 2.0
+		doc, err := loads.Analyzed(data, "2.0")
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to load or validate Swagger v2 spec from '%s': %w", origin, err)
+		}
+		return doc.Spec(), VersionV2, nil
+	}
+	return nil, "", fmt.Errorf("failed to detect OpenAPI/Swagger version in '%s': missing 'openapi' or 'swagger' key", origin)
+}
+
+// securitySchemesV3 extracts the security schemes declared by an OpenAPI v3
+// spec (components.securitySchemes) and marks which ones the root security
+// requirement references.
+func securitySchemesV3(doc *openapi3.T) []mcp.SecurityScheme {
+	if doc == nil {
+		return nil
+	}
+	required := map[string]bool{}
+	for _, req := range doc.Security {
+		for name := range req {
+			required[name] = true
+		}
+	}
+
+	if doc.Components == nil {
+		return nil
+	}
+	schemes := make([]mcp.SecurityScheme, 0, len(doc.Components.SecuritySchemes))
+	for key, ref := range doc.Components.SecuritySchemes {
+		if ref == nil || ref.Value == nil {
+			continue
+		}
+		ss := ref.Value
+		s := mcp.SecurityScheme{
+			Key:          key,
+			Type:         ss.Type,
+			In:           ss.In,
+			Name:         ss.Name,
+			Scheme:       ss.Scheme,
+			BearerFormat: ss.BearerFormat,
+			Required:     required[key],
+		}
+		if flows := ss.Flows; flows != nil {
+			switch {
+			case flows.Password != nil:
+				s.Flow = "password"
+				s.TokenURL = flows.Password.TokenURL
+				s.AuthURL = flows.Password.AuthorizationURL
+			case flows.ClientCredentials != nil:
+				s.Flow = "clientCredentials"
+				s.TokenURL = flows.ClientCredentials.TokenURL
+			case flows.AuthorizationCode != nil:
+				s.Flow = "authorizationCode"
+				s.TokenURL = flows.AuthorizationCode.TokenURL
+				s.AuthURL = flows.AuthorizationCode.AuthorizationURL
+			case flows.Implicit != nil:
+				s.Flow = "implicit"
+				s.AuthURL = flows.Implicit.AuthorizationURL
+			}
+		}
+		schemes = append(schemes, s)
+	}
+	return schemes
+}
+
+// securitySchemesV2 extracts the security schemes declared by a Swagger 2.0
+// spec (securityDefinitions).
+func securitySchemesV2(doc *spec.Swagger) []mcp.SecurityScheme {
+	if doc == nil {
+		return nil
+	}
+	required := map[string]bool{}
+	for _, req := range doc.Security {
+		for name := range req {
+			required[name] = true
+		}
+	}
+
+	schemes := make([]mcp.SecurityScheme, 0, len(doc.SecurityDefinitions))
+	for key, ss := range doc.SecurityDefinitions {
+		if ss == nil {
+			continue
+		}
+		s := mcp.SecurityScheme{
+			Key:      key,
+			Type:     ss.Type,
+			In:       ss.In,
+			Name:     ss.Name,
+			Required: required[key],
+		}
+		// Swagger 2.0 uses "basic" instead of http/bearer.
+		if ss.Type == "basic" {
+			s.Type = "http"
+			s.Scheme = "basic"
+		}
+		if ss.Type == "oauth2" {
+			s.Flow = ss.Flow
+			s.TokenURL = ss.TokenURL
+			s.AuthURL = ss.AuthorizationURL
+		}
+		schemes = append(schemes, s)
+	}
+	return schemes
 }
 
 // GenerateToolSet converts a loaded spec (v2 or v3) into an MCP ToolSet.
@@ -135,11 +382,12 @@ func GenerateToolSet(specDoc interface{}, version string, cfg *config.Config) (*
 func generateToolSetV3(doc *openapi3.T, cfg *config.Config) (*mcp.ToolSet, error) {
 	toolSet := createBaseToolSet(doc.Info.Title, doc.Info.Description, cfg)
 	toolSet.Operations = make(map[string]mcp.OperationDetail) // Initialize the map
+	toolSet.Security = securitySchemesV3(doc)
 
 	// Determine Base URL once
 	baseURL, err := determineBaseURLV3(doc, cfg)
 	if err != nil {
-		log.Printf("Warning: Could not determine base URL for V3 spec: %v. Operations might fail if base URL override is not set.", err)
+		log.Warn("could not determine base URL for V3 spec; operations might fail if no base URL override is set", "error", err)
 		baseURL = "" // Allow proceeding if override is set
 	}
 
@@ -153,7 +401,7 @@ func generateToolSetV3(doc *openapi3.T, cfg *config.Config) (*mcp.ToolSet, error
 	for _, rawPath := range paths { // Rename loop var to rawPath
 		pathItem := doc.Paths.Value(rawPath)
 		for method, op := range pathItem.Operations() {
-			if op == nil || !shouldIncludeOperationV3(op, cfg) {
+			if op == nil {
 				continue
 			}
 
@@ -175,7 +423,7 @@ func generateToolSetV3(doc *openapi3.T, cfg *config.Config) (*mcp.ToolSet, error
 			// Handle request body
 			requestBody, err := requestBodyToMCPV3(op.RequestBody)
 			if err != nil {
-				log.Printf("Warning: skipping request body for %s %s due to error: %v", method, rawPath, err)
+				log.Warn("skipping request body due to error", "method", method, "path", rawPath, "error", err)
 			} else {
 				// Merge request body schema into the main parameter schema
 				if requestBody.Content != nil {
@@ -189,7 +437,7 @@ func generateToolSetV3(doc *openapi3.T, cfg *config.Config) (*mcp.ToolSet, error
 							}
 						} else {
 							// If body is not an object, represent as 'requestBody'
-							log.Printf("Warning: V3 request body for %s %s is not an object schema. Representing as 'requestBody' field.", method, rawPath)
+							log.Warn("V3 request body is not an object schema; representing as 'requestBody' field", "method", method, "path", rawPath)
 							parametersSchema.Properties["requestBody"] = mediaTypeSchema
 						}
 						break // Only process the first content type
@@ -219,14 +467,20 @@ func generateToolSetV3(doc *openapi3.T, cfg *config.Config) (*mcp.ToolSet, error
 					// Optionally, add a note if the requestBody itself was marked as required
 					if requestBody.Required { // Check the boolean field
 						// How to indicate this? Maybe add to description?
-						log.Printf("Note: Request body for %s %s is marked as required.", method, rawPath)
+						log.Debug("request body is marked as required", "method", method, "path", rawPath)
 						// Or add all top-level body props to required? Needs decision.
 					}
 				}
 			}
 
-			// Prepend note about API key handling
-			finalToolDesc := "Note: The API key is handled by the server, no need to provide it. " + toolDesc
+			// Prepend a note about server-side key handling, but ONLY when the
+			// server actually owns an API key for this API (injected from
+			// config). Repeating keyless boilerplate on every tool just burns
+			// prompt context - and is factually wrong for keyless APIs.
+			finalToolDesc := toolDesc
+			if cfg.APIKeyName != "" {
+				finalToolDesc = "Note: The API key is handled by the server, no need to provide it. " + toolDesc
+			}
 
 			tool := mcp.Tool{
 				Name:        toolName,
@@ -299,28 +553,24 @@ func getOperationDescriptionV3(op *openapi3.Operation) string {
 	return op.Description
 }
 
-func shouldIncludeOperationV3(op *openapi3.Operation, cfg *config.Config) bool {
-	return shouldInclude(op.OperationID, op.Tags, cfg)
-}
-
 // parametersToMCPSchemaAndDetailsV3 converts parameters and also returns the parameter details.
 func parametersToMCPSchemaAndDetailsV3(params openapi3.Parameters, cfg *config.Config) (mcp.Schema, []mcp.ParameterDetail, error) {
 	mcpSchema := mcp.Schema{Type: "object", Properties: make(map[string]mcp.Schema), Required: []string{}}
 	opParams := []mcp.ParameterDetail{}
 	for _, paramRef := range params {
 		if paramRef.Value == nil {
-			log.Printf("Warning: Skipping parameter with nil value.")
+			log.Warn("skipping parameter with nil value")
 			continue
 		}
 		param := paramRef.Value
 		if param.Schema == nil {
-			log.Printf("Warning: Skipping parameter '%s' with nil schema.", param.Name)
+			log.Warn("skipping parameter with nil schema", "param", param.Name)
 			continue
 		}
 
 		// Skip the API key parameter if configured
 		if cfg.APIKeyName != "" && param.Name == cfg.APIKeyName && param.In == string(cfg.APIKeyLocation) {
-			log.Printf("Parser V3: Skipping API key parameter '%s' ('%s') from input schema generation.", param.Name, param.In)
+			log.Debug("skipping API key parameter from input schema generation", "param", param.Name, "in", param.In)
 			continue
 		}
 
@@ -438,11 +688,12 @@ func openapiSchemaToMCPSchemaV3(oapiSchemaRef *openapi3.SchemaRef) (mcp.Schema, 
 func generateToolSetV2(doc *spec.Swagger, cfg *config.Config) (*mcp.ToolSet, error) {
 	toolSet := createBaseToolSet(doc.Info.Title, doc.Info.Description, cfg)
 	toolSet.Operations = make(map[string]mcp.OperationDetail) // Initialize map
+	toolSet.Security = securitySchemesV2(doc)
 
 	// Determine Base URL once
 	baseURL, err := determineBaseURLV2(doc, cfg)
 	if err != nil {
-		log.Printf("Warning: Could not determine base URL for V2 spec: %v. Operations might fail if base URL override is not set.", err)
+		log.Warn("could not determine base URL for V2 spec; operations might fail if no base URL override is set", "error", err)
 		baseURL = "" // Allow proceeding if override is set
 	}
 
@@ -455,7 +706,7 @@ func generateToolSetV2(doc *spec.Swagger, cfg *config.Config) (*mcp.ToolSet, err
 			if secDef.Type == "apiKey" {
 				apiKeyName = secDef.Name
 				apiKeyIn = secDef.In // "query" or "header"
-				log.Printf("Parser V2: Detected API key from security definition '%s': Name='%s', In='%s'", name, apiKeyName, apiKeyIn)
+				log.Debug("detected API key from security definition", "name", name, "key_name", apiKeyName, "in", apiKeyIn)
 				break // Assume only one apiKey definition for simplicity
 			}
 		}
@@ -478,7 +729,7 @@ func generateToolSetV2(doc *spec.Swagger, cfg *config.Config) (*mcp.ToolSet, err
 		}
 
 		for method, op := range ops {
-			if op == nil || !shouldIncludeOperationV2(op, cfg) {
+			if op == nil {
 				continue
 			}
 
@@ -519,7 +770,7 @@ func generateToolSetV2(doc *spec.Swagger, cfg *config.Config) (*mcp.ToolSet, err
 					}
 				} else {
 					// If body is not an object, represent as 'requestBody'
-					log.Printf("Warning: V2 request body for %s %s is not an object schema. Representing as 'requestBody' field.", method, rawPath)
+					log.Warn("V2 request body is not an object schema; representing as 'requestBody' field", "method", method, "path", rawPath)
 					if parametersSchema.Properties == nil {
 						parametersSchema.Properties = make(map[string]mcp.Schema)
 					}
@@ -527,8 +778,13 @@ func generateToolSetV2(doc *spec.Swagger, cfg *config.Config) (*mcp.ToolSet, err
 				}
 			}
 
-			// Prepend note about API key handling
-			finalToolDesc := "Note: The API key is handled by the server, no need to provide it. " + toolDesc
+			// Prepend a note about server-side key handling, but ONLY when the
+			// API key is configured (injected server-side). Keyless boilerplate
+			// on every tool would cost prompt context for no information.
+			finalToolDesc := toolDesc
+			if apiKeyName != "" {
+				finalToolDesc = "Note: The API key is handled by the server, no need to provide it. " + toolDesc
+			}
 
 			tool := mcp.Tool{
 				Name:        toolName,
@@ -613,10 +869,6 @@ func getOperationDescriptionV2(op *spec.Operation) string {
 	return op.Description
 }
 
-func shouldIncludeOperationV2(op *spec.Operation, cfg *config.Config) bool {
-	return shouldInclude(op.ID, op.Tags, cfg)
-}
-
 // parametersToMCPSchemaAndDetailsV2 converts V2 parameters and also returns details and request body.
 func parametersToMCPSchemaAndDetailsV2(params []spec.Parameter, definitions spec.Definitions, apiKeyName string) (mcp.Schema, mcp.Schema, []mcp.ParameterDetail, error) {
 	mcpSchema := mcp.Schema{Type: "object", Properties: make(map[string]mcp.Schema), Required: []string{}}
@@ -629,7 +881,7 @@ func parametersToMCPSchemaAndDetailsV2(params []spec.Parameter, definitions spec
 	for _, param := range params {
 		// Skip the API key parameter if it's configured/detected
 		if apiKeyName != "" && param.Name == apiKeyName && (param.In == "query" || param.In == "header") {
-			log.Printf("Parser V2: Skipping API key parameter '%s' ('%s') from input schema generation.", param.Name, param.In)
+			log.Debug("skipping API key parameter from input schema generation", "param", param.Name, "in", param.In)
 			continue
 		}
 
@@ -643,7 +895,7 @@ func parametersToMCPSchemaAndDetailsV2(params []spec.Parameter, definitions spec
 		}
 
 		if param.In != "query" && param.In != "path" && param.In != "header" && param.In != "formData" {
-			log.Printf("Parser V2: Skipping unsupported parameter type '%s' for parameter '%s'", param.In, param.Name)
+			log.Warn("skipping unsupported parameter type", "type", param.In, "param", param.Name)
 			continue
 		}
 
@@ -702,7 +954,7 @@ func parametersToMCPSchemaAndDetailsV2(params []spec.Parameter, definitions spec
 
 		} else {
 			// Body param defined without a schema? Treat as simple string.
-			log.Printf("Warning: V2 body parameter '%s' defined without a schema. Treating as string.", bodyParam.Name)
+			log.Warn("V2 body parameter defined without a schema; treating as string", "param", bodyParam.Name)
 			bodySchema.Type = "string"
 			mcpSchema.Properties[bodyParam.Name] = bodySchema
 			if bodyParam.Required {
@@ -917,40 +1169,6 @@ func generateDefaultToolName(method, path string) string {
 		}
 	}
 	return strings.Join(nameParts, "")
-}
-
-// shouldInclude determines if an operation should be included based on config filters.
-func shouldInclude(opID string, opTags []string, cfg *config.Config) bool {
-	// Exclusion rules take precedence
-	if len(cfg.ExcludeOperations) > 0 && opID != "" && sliceContains(cfg.ExcludeOperations, opID) {
-		return false
-	}
-	if len(cfg.ExcludeTags) > 0 {
-		for _, tag := range opTags {
-			if sliceContains(cfg.ExcludeTags, tag) {
-				return false
-			}
-		}
-	}
-
-	// Inclusion rules
-	hasInclusionRule := len(cfg.IncludeOperations) > 0 || len(cfg.IncludeTags) > 0
-	if !hasInclusionRule {
-		return true
-	} // No inclusion rules, include by default
-
-	if len(cfg.IncludeOperations) > 0 {
-		if opID != "" && sliceContains(cfg.IncludeOperations, opID) {
-			return true
-		}
-	} else if len(cfg.IncludeTags) > 0 {
-		for _, tag := range opTags {
-			if sliceContains(cfg.IncludeTags, tag) {
-				return true
-			}
-		}
-	}
-	return false // Did not match any inclusion rule
 }
 
 // mapJSONSchemaType ensures the type is one recognized by JSON Schema / MCP.

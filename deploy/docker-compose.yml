@@ -1,0 +1,43 @@
+# OpenAPI-MCP — Docker Compose deployment
+#
+# Runs the MCP server (the production /openapi-mcp binary built by the root
+# Dockerfile). The server is reachable by MCP clients over HTTP/SSE at
+# http://localhost:<HOST_PORT>/mcp.
+#
+# Registrations (APIs + targets) made at runtime through the MCP management
+# tools are persisted to ./config/config.yaml on the host, so they survive
+# restarts.
+
+name: openapi-mcp
+
+services:
+  openapi-mcp:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: openapi-mcp:latest
+    container_name: openapi-mcp
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    environment:
+      # Timezone used for log timestamps and registered_at summaries.
+      - TZ=${TZ:-Europe/Madrid}
+      # Add any API keys referenced by targets' api_key_env here, e.g.:
+      # - WEATHER_API_KEY=${WEATHER_API_KEY:-}
+    # User the container process runs as. Defaults to root so runtime
+    # registrations can always write to the bind-mounted ./config dir, which
+    # Docker auto-creates as root. If you override OPENAPI_MCP_UID/GID to a
+    # non-root value, create ./config beforehand and chown it to that uid/gid.
+    user: "${OPENAPI_MCP_UID:-0}:${OPENAPI_MCP_GID:-0}"
+    volumes:
+      # Host directory holding config.yaml. Must be writable by the configured
+      # user so runtime registrations can persist.
+      - ./config:/app/config
+      # Optionally expose your local projects read-only, bound at the SAME
+      # absolute path inside the container, so remote OpenAPI specs can be
+      # referenced by their real host path (e.g.
+      # source: /home/user/Projects/api/spec.yaml). The container sees the
+      # exact same path you use on the host.
+      #- /home/user/Projects:/home/user/Projects:ro
+    command: ["--config", "/app/config/config.yaml", "--port", "8080"]

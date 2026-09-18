@@ -1,0 +1,37 @@
+{
+  "name": "openapi-mcp",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "VARIANT": "1",
+      "OPENCODE_VERSION": "latest"
+    }
+  },
+  "runArgs": [
+    "--init"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "streetsidesoftware.code-spell-checker"
+      ],
+      "settings": {
+        "go.useLanguageServer": true,
+        "files.eol": "\n"
+      }
+    }
+  },
+  "forwardPorts": [
+    8080,
+    8099
+  ],
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh-host,type=bind,readonly",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig-host,type=bind,readonly",
+    "source=${localWorkspaceFolder}/.opencode/state,target=/home/vscode/.local/share/opencode,type=bind"
+  ],
+  "initializeCommand": "mkdir -p ${localWorkspaceFolder}/.opencode/state",
+  "postCreateCommand": "bash ./.devcontainer/ssh-forward.sh && sudo mkdir -p /home/vscode/.local/share/opencode && sudo chown -R vscode:vscode /home/vscode/.local/share/opencode"
+}

@@ -2,10 +2,13 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
+
+	"github.com/ckanthony/openapi-mcp/pkg/logx"
 )
+
+var managerLog = logx.Module("manager")
 
 // client holds information about a connected SSE client.
 type client struct {
@@ -36,7 +39,7 @@ func (m *connectionManager) addClient(r *http.Request, w http.ResponseWriter, f 
 	m.clients[r] = newClient
 	m.mu.Unlock()
 
-	log.Printf("Client connected: %s (Total: %d)", r.RemoteAddr, m.getClientCount())
+	managerLog.Info("client connected", "remote", r.RemoteAddr, "total", m.getClientCount())
 
 	// Send initial toolset immediately
 	go m.sendToolset(newClient) // Send in a goroutine to avoid blocking registration?
@@ -48,9 +51,9 @@ func (m *connectionManager) removeClient(r *http.Request) {
 	_, ok := m.clients[r]
 	if ok {
 		delete(m.clients, r)
-		log.Printf("Client disconnected: %s (Total: %d)", r.RemoteAddr, len(m.clients))
+		managerLog.Info("client disconnected", "remote", r.RemoteAddr, "total", len(m.clients))
 	} else {
-		log.Printf("Attempted to remove already disconnected client: %s", r.RemoteAddr)
+		managerLog.Warn("attempted to remove already disconnected client", "remote", r.RemoteAddr)
 	}
 	m.mu.Unlock()
 }
@@ -68,15 +71,15 @@ func (m *connectionManager) sendToolset(c *client) {
 	if c == nil {
 		return
 	}
-	log.Printf("Attempting to send toolset to client...")
+	managerLog.Debug("attempting to send toolset to client")
 	_, err := fmt.Fprintf(c.writer, "event: tool_set\ndata: %s\n\n", string(m.toolSet))
 	if err != nil {
 		// This error often happens if the client disconnected before/during the write
-		log.Printf("Error sending toolset data to client: %v (client likely disconnected)", err)
+		managerLog.Error("error sending toolset data to client (client likely disconnected)", "error", err)
 		// Optionally trigger removal here if possible, though context done in handler is primary mechanism
 		return
 	}
 	// Flush the data
 	c.flusher.Flush()
-	log.Println("Sent tool_set event and flushed.")
+	managerLog.Debug("sent tool_set event and flushed")
 }

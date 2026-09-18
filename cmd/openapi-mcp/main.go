@@ -1,146 +1,124 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/ckanthony/openapi-mcp/pkg/config"
-	"github.com/ckanthony/openapi-mcp/pkg/parser"
+	"github.com/ckanthony/openapi-mcp/pkg/logx"
 	"github.com/ckanthony/openapi-mcp/pkg/server"
-	"github.com/joho/godotenv"
 )
 
-// stringSliceFlag allows defining a flag that can be repeated to collect multiple string values.
-type stringSliceFlag []string
-
-func (i *stringSliceFlag) String() string {
-	return strings.Join(*i, ", ")
-}
-
-func (i *stringSliceFlag) Set(value string) error {
-	*i = append(*i, value)
-	return nil
-}
-
 func main() {
-	// --- Flag Definitions First ---
-	// Define specPath early so we can use it for .env loading
-	specPath := flag.String("spec", "", "Path or URL to the OpenAPI specification file (required)")
-	port := flag.Int("port", 8080, "Port to run the MCP server on")
+	// --- Flag Definitions ---
+	configPath := flag.String("config", "", "Path to a YAML config file listing APIs, targets and auth. Runtime registrations via MCP tools are written back to this file so they survive restarts. When omitted the server starts with an empty, non-persisted registry.")
+	portFlag := flag.Int("port", 8080, "Port to run the MCP server on (overridden by server.port in the config file)")
+	logLevel := flag.String("log-level", "info", "Minimum log level to emit: debug, info, warn or error")
+	stdioMode := flag.Bool("stdio", false, "Serve MCP over stdio (newline-delimited JSON-RPC on stdin/stdout) instead of HTTP. Scripts, management tools and the model-context surface are identical; use it from stdio MCP clients or analyzers such as mcp-tokens.")
 
-	apiKey := flag.String("api-key", "", "Direct API key value")
-	apiKeyEnv := flag.String("api-key-env", "", "Environment variable name containing the API key")
-	apiKeyName := flag.String("api-key-name", "", "Name of the API key header, query parameter, path parameter, or cookie (required if api-key or api-key-env is set)")
-	apiKeyLocStr := flag.String("api-key-loc", "", "Location of API key: 'header', 'query', 'path', or 'cookie' (required if api-key or api-key-env is set)")
-
-	var includeTags stringSliceFlag
-	flag.Var(&includeTags, "include-tag", "Tag to include (can be repeated)")
-	var excludeTags stringSliceFlag
-	flag.Var(&excludeTags, "exclude-tag", "Tag to exclude (can be repeated)")
-	var includeOps stringSliceFlag
-	flag.Var(&includeOps, "include-op", "Operation ID to include (can be repeated)")
-	var excludeOps stringSliceFlag
-	flag.Var(&excludeOps, "exclude-op", "Operation ID to exclude (can be repeated)")
-
-	serverBaseURL := flag.String("base-url", "", "Manually override the server base URL")
-	defaultToolName := flag.String("name", "OpenAPI-MCP Tools", "Default name for the toolset")
-	defaultToolDesc := flag.String("desc", "Tools generated from OpenAPI spec", "Default description for the toolset")
-
-	// Parse flags *after* defining them all
 	flag.Parse()
 
-	// --- Load .env after parsing flags ---
-	if *specPath != "" && !strings.HasPrefix(*specPath, "http://") && !strings.HasPrefix(*specPath, "https://") {
-		envPath := filepath.Join(filepath.Dir(*specPath), ".env")
-		log.Printf("Attempting to load .env file from spec directory: %s", envPath)
-		err := godotenv.Load(envPath)
+	// --- Logging: structured, human-readable lines as stderr (stdio mode must
+	// keep stdout clean of anything but JSON-RPC) or stdout otherwise ---
+	logOut := os.Stdout
+	if *stdioMode {
+		logOut = os.Stderr
+	}
+	level, err := logx.ParseLevel(*logLevel)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid --log-level: %v\n", err)
+		os.Exit(2)
+	}
+	logx.Configure(logOut, level)
+	log := logx.Module("main")
+
+	// --- Registry (persists runtime registrations to --config when given) ---
+	reg := server.NewRegistry(*configPath)
+
+	// --- Seed from config file (if any) ---
+	var fc *config.FileConfig
+	if *configPath != "" {
+		var err error
+		fc, err = config.LoadFile(*configPath)
 		if err != nil {
-			// It's okay if the file doesn't exist, log other errors.
-			if !os.IsNotExist(err) {
-				log.Printf("Warning: Error loading .env file from %s: %v", envPath, err)
+			// Use errors.Is (not os.IsNotExist) so the check works across the
+			// %w-wrapped error under the Go 1.23 toolchain declared in go.mod.
+			if errors.Is(err, fs.ErrNotExist) {
+				// First run: no config file yet. Start with an empty registry;
+				// the file will be created on the first runtime registration.
+				log.Warn("config file does not exist yet; starting with an empty registry (it will be created on first runtime registration)", "config", *configPath)
 			} else {
-				log.Printf("Info: No .env file found at %s, proceeding without it.", envPath)
+				log.Error("failed to load config file", "error", err, "config", *configPath)
+				os.Exit(1)
 			}
 		} else {
-			log.Printf("Successfully loaded .env file from %s", envPath)
-		}
-	} else if *specPath == "" {
-		log.Println("Skipping .env load because --spec is missing.")
-	} else {
-		log.Println("Skipping .env load because spec path appears to be a URL.")
-	}
-
-	// --- Read REQUEST_HEADERS env var ---
-	customHeadersEnv := os.Getenv("REQUEST_HEADERS")
-	if customHeadersEnv != "" {
-		log.Printf("Found REQUEST_HEADERS environment variable: %s", customHeadersEnv)
-	}
-
-	// --- Input Validation ---
-	if *specPath == "" {
-		log.Println("Error: --spec flag is required.")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	var apiKeyLocation config.APIKeyLocation
-	if *apiKeyLocStr != "" {
-		switch *apiKeyLocStr {
-		case string(config.APIKeyLocationHeader):
-			apiKeyLocation = config.APIKeyLocationHeader
-		case string(config.APIKeyLocationQuery):
-			apiKeyLocation = config.APIKeyLocationQuery
-		case string(config.APIKeyLocationPath):
-			apiKeyLocation = config.APIKeyLocationPath
-		case string(config.APIKeyLocationCookie):
-			apiKeyLocation = config.APIKeyLocationCookie
-		default:
-			log.Fatalf("Error: invalid --api-key-loc value: %s. Must be 'header', 'query', 'path', or 'cookie'.", *apiKeyLocStr)
+			reg.SetServerConfig(fc.Server)
+			if fc.Meta != nil {
+				reg.SetMetaConfig(*fc.Meta)
+			}
+			for i := range fc.APIs {
+				def := fc.APIs[i]
+				if def.Name == "" {
+					log.Warn("skipping API: missing 'name'", "index", i+1, "config", *configPath)
+					continue
+				}
+				summary, err := reg.RegisterAPI(def, false)
+				if err != nil {
+					log.Warn("skipping API: registration failed", "api", def.Name, "config", *configPath, "error", err)
+					continue
+				}
+				log.Info("registered API from config file",
+					"api", summary.Name,
+					"title", summary.Title,
+					"spec_version", summary.SpecVersion,
+					"tools", summary.ToolCount,
+					"targets", len(summary.Targets),
+					"config", *configPath)
+			}
 		}
 	}
-
-	// --- Configuration Population ---
-	cfg := &config.Config{
-		SpecPath:          *specPath,
-		APIKey:            *apiKey,
-		APIKeyFromEnvVar:  *apiKeyEnv,
-		APIKeyName:        *apiKeyName,
-		APIKeyLocation:    apiKeyLocation,
-		IncludeTags:       includeTags,
-		ExcludeTags:       excludeTags,
-		IncludeOperations: includeOps,
-		ExcludeOperations: excludeOps,
-		ServerBaseURL:     *serverBaseURL,
-		DefaultToolName:   *defaultToolName,
-		DefaultToolDesc:   *defaultToolDesc,
-		CustomHeaders:     customHeadersEnv,
-	}
-
-	log.Printf("Configuration loaded: %+v\n", cfg)
-	log.Println("API Key (resolved):", cfg.GetAPIKey())
-
-	// --- Call Parser ---
-	specDoc, version, err := parser.LoadSwagger(cfg.SpecPath)
-	if err != nil {
-		log.Fatalf("Failed to load OpenAPI/Swagger spec: %v", err)
-	}
-	log.Printf("Spec type %s loaded successfully from %s.\n", version, cfg.SpecPath)
-
-	toolSet, err := parser.GenerateToolSet(specDoc, version, cfg)
-	if err != nil {
-		log.Fatalf("Failed to generate MCP toolset: %v", err)
-	}
-	log.Printf("MCP toolset generated with %d tools.\n", len(toolSet.Tools))
 
 	// --- Start Server ---
-	addr := fmt.Sprintf(":%d", *port)
-	log.Printf("Starting MCP server on %s...", addr)
-	err = server.ServeMCP(addr, toolSet, cfg) // Pass cfg to ServeMCP
+	port := *portFlag
+	if fc != nil {
+		port = fc.EffectiveServerPort(port)
+		// The config file may set the log level; it overrides --log-level.
+		if lvl := fc.Server.LogLevel; lvl != "" {
+			if err := logx.SetLevelString(lvl); err != nil {
+				log.Warn("ignoring invalid server.log_level in config", "level", lvl, "error", err)
+			} else {
+				log.Info("log level set from config file", "level", strings.ToLower(logx.Level().String()))
+			}
+		}
+	}
+	addr := fmt.Sprintf(":%d", port)
+	if *stdioMode {
+		addr = "stdio"
+	}
+	log.Info("starting MCP server", "addr", addr)
+	if path := reg.PersistencePath(); path == "" {
+		log.Info("no --config given; runtime registrations are NOT persisted across restarts")
+	} else {
+		log.Info("runtime registrations will be persisted", "path", path)
+	}
+
+	if *stdioMode {
+		log.Info("serving MCP over stdio", "config", *configPath)
+		if err := server.ServeStdio(context.Background(), reg); err != nil {
+			log.Error("failed to serve MCP over stdio", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	err = server.ServeMCP(addr, reg)
 	if err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		log.Error("failed to start server", "error", err, "addr", addr)
+		os.Exit(1)
 	}
 }

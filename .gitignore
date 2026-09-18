@@ -5,6 +5,9 @@
 *.so
 *.dylib
 
+# Build output
+bin/
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -22,3 +25,19 @@ go.work.sum
 .env
 *.env
 !.env.example
+# Runtime state (created on first start)
+deploy/config/
+# Knowledge-store runtime state (created on first start)
+example/acme/kb-remote.git/
+example/acme/kb-checkout/
+# opencode session/state persistence (bound into ~/.local/share/opencode)
+.opencode/
+# Delve debug artifacts
+__debug_bin*
+
+# Playwright MCP test artifacts
+.playwright-mcp/
+
+# Ad-hoc build/screenshot artifacts created while verifying the session
+openapi-mcp
+board-*.png

@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "servers": {
+    "openapi-mcp": {
+      "type": "http",
+      "url": "http://localhost:8086/mcp",
+      "headers": {}
+    }
+  }
+}

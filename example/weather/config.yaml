@@ -1,0 +1,17 @@
+# Weatherbit example — registered as an API with a single target.
+# The spec is served from a local path here; it could equally be a URL, e.g.
+#   source: https://raw.githubusercontent.com/.../weatherbitio-swagger.json
+server:
+  port: 8080
+
+apis:
+  - name: weather
+    source: /app/config/specs/weatherbitio-swagger.json
+    auth:
+      type: apiKey
+      name: key
+      in: query
+    targets:
+      - name: default
+        base_url: https://api.weatherbit.io/v2.0
+        api_key_env: WEATHER_KEY

@@ -26,6 +26,20 @@ type ToolSet struct {
 	// Auth        *AuthInfo `json:"auth,omitempty"` // Removed authentication info
 	Tools []Tool `json:"tools"`
 
+	// Security holds the security schemes declared by the spec (from
+	// components.securitySchemes / securityDefinitions). Used to infer the API's
+	// auth config (see server.InferAuthConfig). Internal, not part of the MCP
+	// tool JSON.
+	Security []SecurityScheme `json:"-"`
+
+	// BaseDir is the directory of the source spec file, used to resolve external
+	// $ref files (e.g. "schemas.yaml#/..."). Internal, not serialized.
+	BaseDir string `json:"-"`
+
+	// BaseURL is the URL of the source spec when it was loaded from http(s),
+	// used to resolve external $ref files served alongside it. Internal.
+	BaseURL string `json:"-"`
+
 	// Operations maps Tool.Name (operationId) to its execution details.
 	// This is internal to the server and not part of the standard MCP JSON response.
 	Operations map[string]OperationDetail `json:"-"` // Use json:"-" to exclude from JSON
@@ -33,6 +47,22 @@ type ToolSet struct {
 	// Internal fields for server-side auth handling (not exposed in JSON)
 	apiKeyName string // e.g., "key", "X-API-Key"
 	apiKeyIn   string // e.g., "query", "header"
+}
+
+// SecurityScheme is a normalized, spec-level security scheme. It carries the
+// authentication *type* and, for apiKey, where the key parameter lives. It does
+// not carry actual secrets.
+type SecurityScheme struct {
+	Key          string // key in components.securitySchemes / securityDefinitions
+	Type         string // apiKey | http | oauth2 | openIdConnect | mutualTLS | basic (v2)
+	In           string // apiKey: header | query | cookie
+	Name         string // apiKey: parameter name
+	Scheme       string // http: basic | bearer | digest
+	BearerFormat string
+	Flow         string // oauth2: password | clientCredentials | authorizationCode | implicit
+	TokenURL     string // oauth2 token URL
+	AuthURL      string // oauth2 authorization URL
+	Required     bool   // referenced by the root security requirement
 }
 
 // SetAPIKeyDetails allows the parser to set internal API key info.
@@ -78,4 +108,66 @@ type Schema struct {
 	Format      string            `json:"format,omitempty"`     // e.g., "int32", "date-time"
 	Enum        []interface{}     `json:"enum,omitempty"`
 	// Add other relevant JSON Schema fields as needed (e.g., minimum, maximum, pattern)
+}
+
+// --- API introspection / documentation model ---
+//
+// ApiDoc is a normalized, client-friendly description of a registered API
+// derived from the OpenAPI/Swagger spec. It powers the introspection
+// management tools (get_api_info, list_api_endpoints, get_api_operation,
+// list_api_schemas) so AI agents can understand an API and how to use it
+// without reading the raw spec.
+
+// ApiDoc is the top-level documentation of an API.
+type ApiDoc struct {
+	Title       string                `json:"title,omitempty"`
+	Version     string                `json:"version,omitempty"`
+	Description string                `json:"description,omitempty"`
+	Servers     []string              `json:"servers,omitempty"`
+	Tags        []string              `json:"tags,omitempty"`
+	Endpoints   []EndpointDoc         `json:"endpoints,omitempty"`
+	Schemas     map[string]*SchemaDoc `json:"schemas,omitempty"` // DTOs/components
+}
+
+// EndpointDoc describes a single operation (endpoint).
+type EndpointDoc struct {
+	OperationID string         `json:"operation_id,omitempty"`
+	ToolName    string         `json:"tool_name,omitempty"` // fully qualified MCP tool name (<api>__<op>), filled by the registry
+	Summary     string         `json:"summary,omitempty"`
+	Description string         `json:"description,omitempty"`
+	Method      string         `json:"method"`
+	Path        string         `json:"path"`
+	Tags        []string       `json:"tags,omitempty"`
+	Parameters  []ParameterDoc `json:"parameters,omitempty"`
+	RequestBody *SchemaDoc     `json:"request_body,omitempty"`
+	Responses   []ResponseDoc  `json:"responses,omitempty"`
+}
+
+// ParameterDoc describes a single operation parameter.
+type ParameterDoc struct {
+	Name        string     `json:"name"`
+	In          string     `json:"in"` // query, header, path, cookie, formData
+	Required    bool       `json:"required,omitempty"`
+	Description string     `json:"description,omitempty"`
+	Schema      *SchemaDoc `json:"schema,omitempty"`
+}
+
+// ResponseDoc describes one response of an operation.
+type ResponseDoc struct {
+	Status      string     `json:"status"` // e.g. "200", "4XX"
+	Description string     `json:"description,omitempty"`
+	Schema      *SchemaDoc `json:"schema,omitempty"`
+}
+
+// SchemaDoc is a JSON-Schema-ish description of a DTO or inline schema.
+type SchemaDoc struct {
+	Ref         string                `json:"ref,omitempty"`  // $ref target, if the schema was a reference
+	Name        string                `json:"name,omitempty"` // component/definition name if resolvable
+	Type        string                `json:"type,omitempty"` // object/string/... (emptied for references)
+	Description string                `json:"description,omitempty"`
+	Format      string                `json:"format,omitempty"`
+	Enum        []interface{}         `json:"enum,omitempty"`
+	Properties  map[string]*SchemaDoc `json:"properties,omitempty"` // for type object
+	Required    []string              `json:"required,omitempty"`
+	Items       *SchemaDoc            `json:"items,omitempty"` // for type array
 }

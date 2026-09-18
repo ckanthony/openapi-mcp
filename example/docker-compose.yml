@@ -15,24 +15,20 @@ services:
 
     volumes:
       # Mount the local './weather' directory (relative to this compose file)
-      # to '/app/example/weather' inside the container.
-      # This makes the spec file accessible to the application.
-      - ./weather:/app/example/weather
+      # to '/app/config/specs' inside the container so the config file and spec
+      # are both visible.
+      - ./weather:/app/config/specs
 
     # Load environment variables from the .env file located in ./weather
     # This is the recommended way to handle secrets like API keys.
-    # Ensure 'example/weather/.env' exists and defines API_KEY.
+    # Ensure 'example/weather/.env' exists and defines WEATHER_KEY.
     env_file:
       - ./weather/.env
 
     # Define the command to run inside the container, overriding the Dockerfile's CMD/ENTRYPOINT args
     # Uses the variables loaded from the env_file.
-    # Make sure the --spec path matches the volume mount point.
     command: >
-      --spec /app/example/weather/weatherbitio-swagger.json
-      --api-key-env API_KEY
-      --api-key-name key
-      --api-key-loc query
+      --config /app/config/specs/config.yaml
       --port 8080 # The port the app listens on inside the container
 
     # Restart policy: Automatically restart the container unless it was manually stopped.

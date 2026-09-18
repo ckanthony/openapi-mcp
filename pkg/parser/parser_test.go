@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-openapi/spec"
@@ -426,7 +427,7 @@ func TestLoadSwagger(t *testing.T) {
 			content:       malformedJSON,
 			fileName:      "malformed.json",
 			expectError:   true,
-			containsError: "failed to parse JSON",
+			containsError: "failed",
 		},
 		{
 			name:          "No version key JSON file",
@@ -469,7 +470,7 @@ func TestLoadSwagger(t *testing.T) {
 			name:          "Malformed JSON URL",
 			content:       malformedJSON,
 			expectError:   true,
-			containsError: "failed to parse JSON",
+			containsError: "failed",
 			isURLTest:     true,
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
@@ -562,6 +563,44 @@ func TestLoadSwagger(t *testing.T) {
 }
 
 // TODO: Add tests for GenerateToolSet
+func TestLoadSwaggerFromBytes(t *testing.T) {
+	tests := []struct {
+		name          string
+		content       string
+		expectError   bool
+		expectVersion string
+		containsError string
+	}{
+		{name: "Valid V3 JSON", content: minimalV3SpecJSON, expectVersion: VersionV3},
+		{name: "Valid V2 JSON", content: minimalV2SpecJSON, expectVersion: VersionV2},
+		{name: "Malformed JSON", content: malformedJSON, expectError: true, containsError: "failed"},
+		{name: "No version key", content: noVersionKeyJSON, expectError: true, containsError: "missing 'openapi' or 'swagger' key"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			specDoc, version, err := LoadSwaggerFromBytes([]byte(tc.content), "inline")
+			if tc.expectError {
+				assert.Error(t, err)
+				if tc.containsError != "" {
+					assert.Contains(t, err.Error(), tc.containsError)
+				}
+				assert.Nil(t, specDoc)
+				assert.Empty(t, version)
+				return
+			}
+			assert.NoError(t, err)
+			assert.NotNil(t, specDoc)
+			assert.Equal(t, tc.expectVersion, version)
+			if version == VersionV3 {
+				assert.IsType(t, &openapi3.T{}, specDoc)
+			} else {
+				assert.IsType(t, &spec.Swagger{}, specDoc)
+			}
+		})
+	}
+}
+
 func TestGenerateToolSet(t *testing.T) {
 	// --- Load Specs Once ---
 	// Load V3 spec (error checked in TestLoadSwagger)
@@ -675,7 +714,7 @@ func TestGenerateToolSet(t *testing.T) {
 				Tools: []mcp.Tool{
 					{
 						Name:        "getPing",
-						Description: "Note: The API key is handled by the server, no need to provide it. Simple ping endpoint",
+						Description: "Simple ping endpoint",
 						InputSchema: mcp.Schema{Type: "object", Properties: map[string]mcp.Schema{}, Required: []string{}},
 					},
 				},
@@ -701,7 +740,7 @@ func TestGenerateToolSet(t *testing.T) {
 				Tools: []mcp.Tool{
 					{
 						Name:        "getHealth",
-						Description: "Note: The API key is handled by the server, no need to provide it. Simple health check",
+						Description: "Simple health check",
 						InputSchema: mcp.Schema{Type: "object", Properties: map[string]mcp.Schema{}, Required: []string{}},
 					},
 				},
@@ -731,7 +770,7 @@ func TestGenerateToolSet(t *testing.T) {
 				Tools: []mcp.Tool{
 					{
 						Name:        "getPing",
-						Description: "Note: The API key is handled by the server, no need to provide it. Simple ping endpoint",
+						Description: "Simple ping endpoint",
 						InputSchema: mcp.Schema{Type: "object", Properties: map[string]mcp.Schema{}, Required: []string{}},
 					},
 				},
@@ -745,77 +784,84 @@ func TestGenerateToolSet(t *testing.T) {
 				},
 			},
 		},
-		// --- Filtering Tests (Using Complex Specs) ---
+		// --- Filtering moved to the runtime allow-set (registry) ---
+		//
+		// The parser is deliberately non-destructive: it always generates the
+		// FULL toolset for the spec regardless of include/exclude config. The
+		// include/exclude/allow-set semantics now live in the registry's
+		// exposure layer (allowSetAllows / exposure tools), which narrows the
+		// *served* footprint without dropping indexed operations. These cases
+		// pin that the whole spec surface survives parsing.
 		{
-			name:        "V3 Complex - Include Tag1",
+			name:        "V3 Complex - filters do not drop operations",
 			spec:        specComplexV3,
 			version:     VersionV3,
 			cfg:         &config.Config{IncludeTags: []string{"tag1"}},
 			expectError: false,
 			expectedToolSet: &mcp.ToolSet{
-				Name: "Complex V3 API", Description: "", // Should only include listItems and createItem
-				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "createItem"}},             // Simplified for length check
-				Operations: map[string]mcp.OperationDetail{"listItems": {}, "createItem": {}}, // Simplified for length check
+				Name:       "Complex V3 API",
+				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "createItem"}, {Name: "getPing"}, {Name: "listUsers"}},
+				Operations: map[string]mcp.OperationDetail{"listItems": {}, "createItem": {}, "getPing": {}, "listUsers": {}},
 			},
 		},
 		{
-			name:        "V3 Complex - Exclude Tag2",
+			name:        "V3 Complex - filters do not drop operations (exclude)",
 			spec:        specComplexV3,
 			version:     VersionV3,
 			cfg:         &config.Config{ExcludeTags: []string{"tag2"}},
 			expectError: false,
 			expectedToolSet: &mcp.ToolSet{
-				Name: "Complex V3 API", Description: "", // Should include listItems and getPing
-				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "getPing"}},             // Simplified for length check
-				Operations: map[string]mcp.OperationDetail{"listItems": {}, "getPing": {}}, // Simplified for length check
+				Name:       "Complex V3 API",
+				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "createItem"}, {Name: "getPing"}, {Name: "listUsers"}},
+				Operations: map[string]mcp.OperationDetail{"listItems": {}, "createItem": {}, "getPing": {}, "listUsers": {}},
 			},
 		},
 		{
-			name:        "V3 Complex - Include Operation listItems",
+			name:        "V3 Complex - filters do not drop operations (allow-set)",
 			spec:        specComplexV3,
 			version:     VersionV3,
 			cfg:         &config.Config{IncludeOperations: []string{"listItems"}},
 			expectError: false,
 			expectedToolSet: &mcp.ToolSet{
-				Name: "Complex V3 API", Description: "", // Should include only listItems
-				Tools:      []mcp.Tool{{Name: "listItems"}},                 // Simplified for length check
-				Operations: map[string]mcp.OperationDetail{"listItems": {}}, // Simplified for length check
+				Name:       "Complex V3 API",
+				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "createItem"}, {Name: "getPing"}, {Name: "listUsers"}},
+				Operations: map[string]mcp.OperationDetail{"listItems": {}, "createItem": {}, "getPing": {}, "listUsers": {}},
 			},
 		},
 		{
-			name:        "V3 Complex - Exclude Operation createItem, getPing",
+			name:        "V3 Complex - filters do not drop operations (exclude ops)",
 			spec:        specComplexV3,
 			version:     VersionV3,
 			cfg:         &config.Config{ExcludeOperations: []string{"createItem", "getPing"}},
 			expectError: false,
 			expectedToolSet: &mcp.ToolSet{
-				Name: "Complex V3 API", Description: "", // Should include listItems and listUsers
-				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "listUsers"}},             // Simplified for length check
-				Operations: map[string]mcp.OperationDetail{"listItems": {}, "listUsers": {}}, // Simplified for length check
+				Name:       "Complex V3 API",
+				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "createItem"}, {Name: "getPing"}, {Name: "listUsers"}},
+				Operations: map[string]mcp.OperationDetail{"listItems": {}, "createItem": {}, "getPing": {}, "listUsers": {}},
 			},
 		},
 		{
-			name:        "V2 Complex - Include Tag1",
+			name:        "V2 Complex - filters do not drop operations",
 			spec:        specComplexV2,
 			version:     VersionV2,
 			cfg:         &config.Config{IncludeTags: []string{"tag1"}},
 			expectError: false,
 			expectedToolSet: &mcp.ToolSet{
-				Name: "Complex V2 API", Description: "", // Should only include listItems and createItem
-				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "createItem"}},             // Simplified for length check
-				Operations: map[string]mcp.OperationDetail{"listItems": {}, "createItem": {}}, // Simplified for length check
+				Name:       "Complex V2 API",
+				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "createItem"}, {Name: "getPing"}, {Name: "listUsers"}},
+				Operations: map[string]mcp.OperationDetail{"listItems": {}, "createItem": {}, "getPing": {}, "listUsers": {}},
 			},
 		},
 		{
-			name:        "V2 Complex - Exclude Tag2",
+			name:        "V2 Complex - filters do not drop operations (exclude)",
 			spec:        specComplexV2,
 			version:     VersionV2,
 			cfg:         &config.Config{ExcludeTags: []string{"tag2"}},
 			expectError: false,
 			expectedToolSet: &mcp.ToolSet{
-				Name: "Complex V2 API", Description: "", // Should include listItems and getPing
-				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "getPing"}},             // Simplified for length check
-				Operations: map[string]mcp.OperationDetail{"listItems": {}, "getPing": {}}, // Simplified for length check
+				Name:       "Complex V2 API",
+				Tools:      []mcp.Tool{{Name: "listItems"}, {Name: "createItem"}, {Name: "getPing"}, {Name: "listUsers"}},
+				Operations: map[string]mcp.OperationDetail{"listItems": {}, "createItem": {}, "getPing": {}, "listUsers": {}},
 			},
 		},
 		// --- Parameter/Schema Tests ---
@@ -831,7 +877,7 @@ func TestGenerateToolSet(t *testing.T) {
 				Tools: []mcp.Tool{
 					{
 						Name:        "testParams",
-						Description: "Note: The API key is handled by the server, no need to provide it. Test various params",
+						Description: "Test various params",
 						InputSchema: mcp.Schema{
 							Type: "object",
 							Properties: map[string]mcp.Schema{
@@ -876,7 +922,7 @@ func TestGenerateToolSet(t *testing.T) {
 				Tools: []mcp.Tool{
 					{
 						Name:        "testV2Params",
-						Description: "Note: The API key is handled by the server, no need to provide it. Test V2 params and ref",
+						Description: "Test V2 params and ref",
 						InputSchema: mcp.Schema{
 							Type: "object",
 							Properties: map[string]mcp.Schema{
@@ -919,7 +965,7 @@ func TestGenerateToolSet(t *testing.T) {
 				Tools: []mcp.Tool{
 					{
 						Name:        "processArrays",
-						Description: "Note: The API key is handled by the server, no need to provide it. Process arrays",
+						Description: "Process arrays",
 						InputSchema: mcp.Schema{
 							Type: "object",
 							Properties: map[string]mcp.Schema{
@@ -954,7 +1000,7 @@ func TestGenerateToolSet(t *testing.T) {
 				Tools: []mcp.Tool{
 					{
 						Name:        "getArrays",
-						Description: "Note: The API key is handled by the server, no need to provide it. Get arrays",
+						Description: "Get arrays",
 						InputSchema: mcp.Schema{
 							Type: "object",
 							Properties: map[string]mcp.Schema{
@@ -989,7 +1035,7 @@ func TestGenerateToolSet(t *testing.T) {
 				Tools: []mcp.Tool{
 					{
 						Name:        "uploadFile",
-						Description: "Note: The API key is handled by the server, no need to provide it. Upload file",
+						Description: "Upload file",
 						InputSchema: mcp.Schema{
 							Type: "object",
 							Properties: map[string]mcp.Schema{
@@ -1083,4 +1129,90 @@ func TestGenerateToolSet(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSpecSourceModified(t *testing.T) {
+	t.Run("file mtime", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "spec.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(minimalV3SpecJSON), 0o644))
+
+		want := time.Date(2026, 5, 4, 3, 2, 1, 0, time.UTC)
+		require.NoError(t, os.Chtimes(path, want, want))
+
+		got := SpecSourceModified(path)
+		require.False(t, got.IsZero())
+		assert.Equal(t, want.UTC(), got.UTC())
+	})
+
+	t.Run("http Last-Modified", func(t *testing.T) {
+		stamp := time.Date(2026, 8, 9, 10, 11, 12, 0, time.UTC)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodHead, r.Method)
+			w.Header().Set("Last-Modified", stamp.Format(http.TimeFormat))
+		}))
+		defer srv.Close()
+
+		got := SpecSourceModified(srv.URL)
+		require.False(t, got.IsZero())
+		assert.Equal(t, stamp.UTC(), got.UTC())
+	})
+
+	t.Run("http without Last-Modified is unknown", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		defer srv.Close()
+		assert.True(t, SpecSourceModified(srv.URL).IsZero())
+	})
+
+	t.Run("missing file is unknown", func(t *testing.T) {
+		assert.True(t, SpecSourceModified(filepath.Join(t.TempDir(), "nope.yaml")).IsZero())
+	})
+
+	t.Run("empty source is unknown", func(t *testing.T) {
+		assert.True(t, SpecSourceModified("").IsZero())
+	})
+}
+
+// TestGenerateToolSet_APIKeyNoteGating pins the server-side-key note to only
+// appear when the server actually owns an API key: keyless APIs must not carry
+// the "Note: The API key is handled by the server" boilerplate, because over a
+// fleet of operations that is pure prompt-context waste.
+func TestGenerateToolSet_APIKeyNoteGating(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "minimal_v3.json")
+	require.NoError(t, os.WriteFile(path, []byte(minimalV3SpecJSON), 0644))
+	doc, version, err := LoadSwagger(path)
+	require.NoError(t, err)
+	require.Equal(t, VersionV3, version)
+	spec := doc.(*openapi3.T)
+
+	const withNote = "Note: The API key is handled by the server, no need to provide it. Simple ping endpoint"
+
+	t.Run("keyless config omits the note", func(t *testing.T) {
+		ts, err := GenerateToolSet(spec, VersionV3, &config.Config{})
+		require.NoError(t, err)
+		require.Len(t, ts.Tools, 1)
+		assert.Equal(t, "Simple ping endpoint", ts.Tools[0].Description)
+	})
+
+	t.Run("configured API key includes the note", func(t *testing.T) {
+		ts, err := GenerateToolSet(spec, VersionV3, &config.Config{
+			APIKeyName:     "apikey",
+			APIKeyLocation: config.APIKeyLocationHeader,
+		})
+		require.NoError(t, err)
+		require.Len(t, ts.Tools, 1)
+		assert.Equal(t, withNote, ts.Tools[0].Description)
+	})
+
+	t.Run("keyless V2 config omits the note", func(t *testing.T) {
+		pathV2 := filepath.Join(t.TempDir(), "minimal_v2.json")
+		require.NoError(t, os.WriteFile(pathV2, []byte(minimalV2SpecJSON), 0644))
+		docV2, versionV2, err := LoadSwagger(pathV2)
+		require.NoError(t, err)
+		require.Equal(t, VersionV2, versionV2)
+		ts, err := GenerateToolSet(docV2, VersionV2, &config.Config{})
+		require.NoError(t, err)
+		require.Len(t, ts.Tools, 1)
+		assert.Equal(t, "Simple health check", ts.Tools[0].Description)
+	})
 }

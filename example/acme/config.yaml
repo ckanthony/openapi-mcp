@@ -1,0 +1,21 @@
+# Acme API example — used when debugging the git-backed knowledge store.
+# Run from the repository root:
+#   go run ./cmd/openapi-mcp --config example/acme/config.yaml
+# Server port is pinned here (server.port overrides --port).
+server:
+  port: 8086
+  log_level: debug
+
+apis:
+  - name: acme
+    source: example/acme/acme-openapi.json
+    knowledge:
+      enabled: true
+      language: es
+      root: example/acme/kb-checkout/acme
+      backend:
+        type: git
+        repository: example/acme/kb-remote.git
+        branch: main
+        sync: auto
+        conflict: rebase

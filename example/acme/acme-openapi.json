@@ -1,0 +1,18 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Acme API", "version": "1.0.0" },
+  "paths": {
+    "/users": {
+      "get": {
+        "operationId": "list_users",
+        "summary": "List users",
+        "responses": { "200": { "description": "ok" } }
+      },
+      "post": {
+        "operationId": "create_user",
+        "summary": "Create a user",
+        "responses": { "201": { "description": "created" } }
+      }
+    }
+  }
+}

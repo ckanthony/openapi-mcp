@@ -84,7 +84,37 @@ func cleanupTestConnection(connID string) {
 		delete(activeConnections, connID)
 		close(msgChan)
 	}
+	delete(initializedConnections, connID)
 	connMutex.Unlock()
+}
+
+// cfgToTarget mirrors the relevant runtime Config fields onto a target
+// definition so handler tests can exercise the per-target request config path.
+func cfgToTarget(cfg *config.Config) config.TargetDefinition {
+	return config.TargetDefinition{
+		Name:      "default",
+		BaseURL:   cfg.ServerBaseURL,
+		APIKey:    cfg.APIKey,
+		APIKeyEnv: cfg.APIKeyFromEnvVar,
+	}
+}
+
+// newTestRegistryForToolSet registers an already-parsed toolset (plus its
+// config as a single 'default' target) in a fresh in-memory registry. If the
+// config carries API-key placement, it is expressed as the API-level auth.
+func newTestRegistryForToolSet(toolSet *mcp.ToolSet, cfg *config.Config) *Registry {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	reg := NewRegistry("")
+	def := exposedAPI(config.APIDefinition{Targets: []config.TargetDefinition{cfgToTarget(cfg)}})
+	if cfg.APIKeyName != "" {
+		def.Auth = config.AuthConfig{Type: config.AuthAPIKey, Name: cfg.APIKeyName, In: string(cfg.APIKeyLocation)}
+	}
+	if _, err := reg.registerParsedAPI(def, toolSet, "v3", false); err != nil {
+		panic(err)
+	}
+	return reg
 }
 
 // --- End Re-added Helper Functions ---
@@ -145,7 +175,7 @@ func TestHttpMethodPostHandler(t *testing.T) {
 				assert.Contains(t, resultMap, "metadata")
 				assert.Contains(t, resultMap, "tools")
 				metadata, _ := resultMap["metadata"].(map[string]interface{})
-				assert.Equal(t, 2, metadata["count"]) // Corrected: Expect int(2)
+				assert.Equal(t, 2+len(managementTools), metadata["count"]) // spec tools + management tools
 			},
 		},
 		{
@@ -347,7 +377,8 @@ func TestHttpMethodPostHandler(t *testing.T) {
 			req.Header.Set("X-Connection-ID", connID) // Use the generated connID
 			rr := httptest.NewRecorder()
 
-			httpMethodPostHandler(rr, req, toolSet, cfg)
+			reg := newTestRegistryForToolSet(toolSet, cfg)
+			httpMethodPostHandler(rr, req, reg)
 
 			// 1. Check synchronous response
 			assert.Equal(t, tc.expectedSyncStatus, rr.Code, "Unexpected status code for sync response")
@@ -1083,4 +1114,80 @@ func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 	case <-time.After(timeout):
 		return false // Timed out
 	}
+}
+
+func TestStreamableHTTPTransport(t *testing.T) {
+	// Modern MCP clients (e.g. opencode) POST a single JSON-RPC request and
+	// expect a synchronous JSON body back (no SSE session involved).
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer backend.Close()
+
+	toolSet := createTestToolSetForCall()
+	reg := newTestRegistryForToolSet(toolSet, &config.Config{ServerBaseURL: backend.URL})
+
+	// initialize
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{
+		"jsonrpc":"2.0","id":1,"method":"initialize",
+		"params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"opencode","version":"1"}}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	httpMethodPostHandler(rr, req, reg)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var initResp jsonRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &initResp))
+	assert.Nil(t, initResp.Error)
+	resultMap := initResp.Result.(map[string]interface{})
+	assert.Equal(t, "2025-03-26", resultMap["protocolVersion"])
+
+	// tools/list (no session id)
+	req = httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	httpMethodPostHandler(rr, req, reg)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var listResp jsonRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &listResp))
+	resultMap = listResp.Result.(map[string]interface{})
+	assert.Contains(t, resultMap, "tools")
+
+	// tools/call
+	req = httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{
+		"jsonrpc":"2.0","id":3,"method":"tools/call",
+		"params":{"name":"get_user","arguments":{"user_id":"x"}}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	httpMethodPostHandler(rr, req, reg)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var callResp jsonRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &callResp))
+	assert.Nil(t, callResp.Error)
+	callMap, ok := callResp.Result.(map[string]interface{})
+	require.True(t, ok)
+	content := callMap["content"].([]interface{})
+	text := content[0].(map[string]interface{})["text"]
+	assert.Equal(t, `{"ok":true}`, text)
+
+	// notifications/initialized (no response body expected)
+	req = httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"notifications/initialized"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	httpMethodPostHandler(rr, req, reg)
+	assert.Equal(t, http.StatusAccepted, rr.Code)
+
+	// Batch request
+	req = httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`[
+		{"jsonrpc":"2.0","id":4,"method":"tools/list"},
+		{"jsonrpc":"2.0","id":5,"method":"logging/setLevel","params":{"level":"info"}}
+	]`))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	httpMethodPostHandler(rr, req, reg)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var batch []jsonRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &batch))
+	assert.Len(t, batch, 2)
 }
