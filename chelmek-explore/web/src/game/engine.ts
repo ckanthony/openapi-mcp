@@ -158,10 +158,23 @@ export function createGame(container: HTMLElement): GameHandle {
     ringShape(ring, shape);
     const geo = new THREE.ShapeGeometry(shape);
     const pos = geo.getAttribute("position");
-    // ShapeGeometry uses (x, y); our plane is (x, z) with the ring already in
-    // map coordinates, so y from the shape becomes world z directly.
-    for (let i = 0; i < pos.count; i += 1) {
-      flatPush(pos.getX(i), y, pos.getY(i), colour);
+    // ShapeGeometry is an INDEXED geometry: its vertex order is the earcut
+    // output, not a triangle list. Reading positions 0,1,2 / 3,4,5 in sequence
+    // therefore stitches unrelated corners together and shreds every concave
+    // footprint -- which is most real parks and lakes. Follow the index.
+    //
+    // ShapeGeometry uses (x, y); the ring is already in map coordinates, so
+    // the shape's y becomes world z directly.
+    const idx = geo.index;
+    if (idx) {
+      for (let i = 0; i < idx.count; i += 1) {
+        const v = idx.getX(i);
+        flatPush(pos.getX(v), y, pos.getY(v), colour);
+      }
+    } else {
+      for (let i = 0; i < pos.count; i += 1) {
+        flatPush(pos.getX(i), y, pos.getY(i), colour);
+      }
     }
     geo.dispose();
   };

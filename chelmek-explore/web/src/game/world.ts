@@ -21,7 +21,7 @@ import {
   type Building,
   type Ring,
   type Road,
-} from "./geometry";
+} from "./geometry.ts";
 
 export { insideBuilding, pointInRing, nearbyBuildings };
 

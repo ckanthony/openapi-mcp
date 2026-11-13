@@ -12,6 +12,42 @@
   </head>
   <body>
     <div id="root"></div>
+    <pre id="boot-log" style="position:fixed;inset:auto 0 0 0;max-height:45vh;overflow:auto;margin:0;padding:8px;background:#0e1116;color:#c4452d;font:11px/1.4 ui-monospace,monospace;white-space:pre-wrap;z-index:99999;display:none"></pre>
+    <script>
+      // Boot log: the game is a static page, so if anything fails before React
+      // mounts there is no other way to see why. Every message is also mirrored
+      // to the console; the on-screen panel only appears on a real failure.
+      (function () {
+        var el = document.getElementById("boot-log");
+        var lines = [];
+        function show(msg) {
+          lines.push(msg);
+          el.textContent = lines.join("\n");
+          el.style.display = "block";
+        }
+        window.__chelmeBoot = { show: show, lines: lines };
+        window.addEventListener("error", function (e) {
+          show("BŁĄD: " + (e.message || "nieznany") + (e.filename ? "\n  w " + e.filename + ":" + e.lineno : ""));
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e.reason;
+          show("OBIETNICA ODRZUCONA: " + (r && r.message ? r.message : String(r)));
+        });
+        // WebGL availability is the single most common cause of a blank canvas.
+        try {
+          var c = document.createElement("canvas");
+          var gl = c.getContext("webgl2") || c.getContext("webgl");
+          if (!gl) {
+            show("BRAK WebGL: ta przeglądarka nie udostępnia grafiki 3D.");
+          }
+        } catch (err) {
+          show("BRAK WebGL: " + err.message);
+        }
+        if (!window.WebGLRenderingContext) {
+          show("BRAK WebGLRenderingContext: przeglądarka bez wsparcia 3D.");
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
