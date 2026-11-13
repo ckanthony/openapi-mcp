@@ -12,6 +12,35 @@ npm run dev      # http://<host>:8080  ->  przycisk "Uruchom grę"
 
 ---
 
+## Zagraj teraz — link
+
+**https://8080-i7vhpsgygm4iixbnzavtn.e2b.app**
+
+To jest podgląd sandboxu Arena (dev server Vite na `0.0.0.0:8080`). Trwa tak
+długo, jak działa proces `chelmek-explore-launcher`. Po restarcie sandboxu
+adres zmieni się, bo zawiera identyfikator sandboxu.
+
+Sprawdzone przez proxy (nagłówek `Host` ustawiony na domenę podglądu), nie
+zgadywane:
+
+```
+200  /
+200  /src/main.tsx
+200  /src/App.tsx
+200  /src/game/GameView.tsx
+200  /src/game/engine.ts
+200  /src/game/world.ts
+200  /src/game/city.json   (425 350 B)
+200  /src/styles.scss
+```
+
+Osobno sprawdzony build produkcyjny (`dist/`) serwowany statycznie:
+`index.html` 200, `index-onpFgXfu.js` 200, `index-tSGv_bLM.css` 200.
+
+Stały adres publiczny (Vercel / GitHub Pages) **nie powstał** — patrz sekcja
+o blokadzie wdrożenia niżej.
+
+
 ## What is real in it
 
 | Element | Count | Source |
