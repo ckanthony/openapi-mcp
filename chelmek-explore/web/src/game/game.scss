@@ -1,0 +1,207 @@
+// Touch-first game chrome. Carbon tokens for anything textual, plain CSS for
+// the canvas overlay (Carbon has no game-HUD primitives, and faking them with
+// form controls would hurt usability on a phone).
+
+.game {
+  position: fixed;
+  inset: 0;
+  background: #070b12;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  z-index: 9000;
+}
+
+.game__canvas {
+  position: absolute;
+  inset: 0;
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.75rem;
+}
+
+.hud__top {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  pointer-events: auto;
+}
+
+.hud__chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgb(6 12 20 / 78%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 2px;
+  padding: 0.3rem 0.55rem;
+  backdrop-filter: blur(6px);
+  max-width: 15rem;
+}
+
+.hud__label {
+  font-size: 0.625rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #8fa3b8;
+}
+
+.hud__value {
+  font-size: 0.8125rem;
+  color: #e8eef6;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud__exit {
+  margin-left: auto;
+}
+
+.hud__near {
+  pointer-events: auto;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgb(6 12 20 / 86%);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 2px;
+  padding: 0.3rem 0.5rem;
+  color: #e8eef6;
+  font-size: 0.8125rem;
+  margin-bottom: 7.5rem;
+  max-width: 20rem;
+}
+
+.hud__help {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(28rem, calc(100vw - 2rem));
+  background: rgb(8 14 22 / 94%);
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 2px;
+  padding: 1.25rem;
+  color: #e8eef6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  z-index: 2;
+}
+
+.hud__help-dim {
+  color: #8fa3b8;
+  font-size: 0.75rem;
+}
+
+.pad {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 1;
+}
+
+.pad__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 3.4rem);
+  grid-template-rows: repeat(3, 3.4rem);
+  gap: 0.35rem;
+}
+
+.pad__btn {
+  background: rgb(10 18 28 / 82%);
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 2px;
+  color: #dce6f2;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+
+  &:active {
+    background: rgb(40 70 105 / 92%);
+    border-color: rgb(120 190 255 / 60%);
+  }
+}
+
+.pad__btn--run {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+@media (pointer: fine) {
+  // Desktop players use the keyboard; the pad just gets in the way, but it is
+  // left visible and dimmed so nobody wonders where the controls are.
+  .pad {
+    opacity: 0.28;
+
+    &:hover {
+      opacity: 0.9;
+    }
+  }
+}
+
+/* Fatal fallback: shown instead of a silent black screen when WebGL is
+   unavailable. Sits above the canvas but below the HUD. */
+.game__fatal {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 1.5rem;
+  max-width: 34rem;
+  margin: 0 auto;
+  color: #f3ead7;
+  background: #0e1116;
+
+  h2 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  p,
+  ul {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #c8c1b4;
+  }
+
+  ul {
+    padding-left: 1.25rem;
+  }
+
+  &-detail {
+    font-family: ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: #a39b8d;
+    word-break: break-word;
+  }
+}

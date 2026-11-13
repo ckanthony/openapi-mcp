@@ -1,0 +1,7 @@
+brand_id,real_name,fallback_name,poi_ids,mode,sign_w_cm,sign_h_cm,sign_color_hex,emissive_night,holds_trademark,consent_ref,consent_expires,fallback_asset
+brand_lidl,Lidl,Market Spożywczy,poi_lidl_krakowska,fallback,900,180,#0050AA,true,true,,,/Game/Chelmek/POI/Brands/Fallback/MarketSpoleczy
+brand_biedronka,Biedronka,Sklep Dyskontowy,poi_biedronka_krakowska,fallback,900,180,#D4002A,true,true,,,/Game/Chelmek/POI/Brands/Fallback/SklepDyskontowy
+brand_rossmann,Rossmann,Drogeria,poi_rossmann_krakowska,fallback,600,120,#C8102E,true,true,,,/Game/Chelmek/POI/Brands/Fallback/Drogeria
+brand_zabka,Żabka,Sklep Osiedlowy,poi_zabka_krakowska;poi_zabka_piastowska,fallback,400,90,#00A94F,true,true,,,/Game/Chelmek/POI/Brands/Fallback/SklepOsiedlowy
+brand_ptys,Ptyś,Cukiernia,poi_ptys_baty,fallback,300,80,#8B5E3C,true,true,,,/Game/Chelmek/POI/Brands/Fallback/Cukiernia
+brand_cizemka,Ciżemka,Pizzeria,poi_cizemka,fallback,400,100,#B23A2E,true,true,,,/Game/Chelmek/POI/Brands/Fallback/Pizzeria
