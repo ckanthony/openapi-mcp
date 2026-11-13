@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import {
   Button,
   Tag,
@@ -10,6 +10,10 @@ import {
   StructuredListRow,
   StructuredListCell,
 } from "@carbon/react";
+// three.js + the 416 kB OSM extract must not block first paint on a phone.
+const GameView = lazy(() =>
+  import("./game/GameView").then((m) => ({ default: m.GameView })),
+);
 import {
   pois,
   stats,
@@ -41,6 +45,7 @@ function Stat({ value, label, note }: { value: string; label: string; note?: str
 
 export function App() {
   const [showAll, setShowAll] = useState(false);
+  const [playing, setPlaying] = useState(false);
 
   const visible = useMemo(
     () => (showAll ? pois : pois.slice(0, 8)),
@@ -48,6 +53,20 @@ export function App() {
   );
 
   const done = roadmap.filter((r) => r.status === "done").length;
+
+  if (playing) {
+    return (
+      <Suspense
+        fallback={
+          <div className="game-loading">
+            <InlineLoading description="Ładowanie Chełmka…" />
+          </div>
+        }
+      >
+        <GameView onExit={() => setPlaying(false)} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="app">
@@ -63,22 +82,22 @@ export function App() {
       <main className="app__main">
         <section className="hero">
           <span className="hero__eyebrow">Launcher · projekt w toku</span>
-          <h1>Chełmek 1:1 w Unreal Engine 5</h1>
+          <h1>Przejdź się po Chełmku</h1>
           <p>
-            Ta strona jest wyłącznie frontendem. Silnik UE5 renderuje się na
-            desktopie lub na hoście GPU przez Pixel Streaming — Vercel nie
-            uruchamia Unreal Engine. Dane POI poniżej pochodzą wprost z
-            zamrożonego kontraktu <span className="mono">W0</span>, nie z ręcznie
-            wpisanej listy.
+            Wersja przeglądarkowa: prawdziwe obrysy 2731 budynków, 93 nazwane
+            ulice i 85 punktów z OpenStreetMap. Bez instalacji, działa też na
+            telefonie.
+            Docelowy świat w Unreal Engine 5 wymaga osobnego builda desktopowego
+            albo hosta GPU — ta strona go nie renderuje.
           </p>
           <div className="hero__actions">
-            <Button kind="primary" disabled href="#">
-              Pobierz build desktop
+            <Button kind="primary" onClick={() => setPlaying(true)}>
+              Uruchom grę
             </Button>
             <Button kind="tertiary" disabled href="#">
-              Pixel Streaming
+              Build UE5 — niedostępny
             </Button>
-            <InlineLoading description="Build niedostępny — bloker B1 (brak UE / GPU)" />
+            <InlineLoading description="Bloker B1: brak UE 5.8 / GPU" />
           </div>
         </section>
 

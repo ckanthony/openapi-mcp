@@ -15,6 +15,7 @@ import roadmapMd from "../../ROADMAP_STATUS.md?raw";
 import contractVersion from "../../SCHEMA_VERSION?raw";
 import { parseCsv } from "./csv";
 
+
 export type Poi = {
   poiId: string;
   name: string;
@@ -69,6 +70,10 @@ export const stats = {
   fallbackCount: brandRows.filter((b) => b.mode === "fallback").length,
   licensedCount: brandRows.filter((b) => b.mode === "licensed").length,
   categories: Array.from(new Set(pois.map((p) => p.category))).sort(),
+  
+  
+  
+  
 };
 
 const STATUS_MAP: Record<string, RoadmapRow["status"]> = {
