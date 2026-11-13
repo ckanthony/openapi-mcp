@@ -1,0 +1,88 @@
+{
+  "checks": [
+    {
+      "check": "schema_version.semver",
+      "status": "PASS",
+      "detail": "SCHEMA_VERSION = '1.0.0'"
+    },
+    {
+      "check": "schema_version.in_contract",
+      "status": "PASS",
+      "detail": "docs/CONTRACT.md must state the frozen version"
+    },
+    {
+      "check": "schema.parses[poi_manifest.schema.json]",
+      "status": "PASS",
+      "detail": "Data/schemas/poi_manifest.schema.json"
+    },
+    {
+      "check": "schema.parses[branding_manifest.schema.json]",
+      "status": "PASS",
+      "detail": "Data/schemas/branding_manifest.schema.json"
+    },
+    {
+      "check": "schema.parses[source_manifest.schema.json]",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "csv.frozen_columns[poi_manifest.csv]",
+      "status": "PASS",
+      "detail": "15 rows, 25 columns"
+    },
+    {
+      "check": "csv.schema[poi_manifest.csv]",
+      "status": "PASS",
+      "detail": "15 rows valid"
+    },
+    {
+      "check": "csv.frozen_columns[branding_manifest.csv]",
+      "status": "PASS",
+      "detail": "6 rows, 13 columns"
+    },
+    {
+      "check": "csv.schema[branding_manifest.csv]",
+      "status": "PASS",
+      "detail": "6 rows valid"
+    },
+    {
+      "check": "poi.georeference_derived",
+      "status": "PASS",
+      "detail": "15 rows match geo_to_ue.py"
+    },
+    {
+      "check": "branding.manifest_consistent",
+      "status": "PASS",
+      "detail": "6 brand rows"
+    },
+    {
+      "check": "branding.no_unverified_rows",
+      "status": "PASS",
+      "detail": "0 POI rows still unverified: []"
+    },
+    {
+      "check": "branding.every_brand_has_manifest_row",
+      "status": "PASS",
+      "detail": "all branded POIs mapped"
+    },
+    {
+      "check": "licence.poi_source_allowlist",
+      "status": "PASS",
+      "detail": "all POI sources allow-listed"
+    },
+    {
+      "check": "geo.source_manifest_valid",
+      "status": "PASS",
+      "detail": "8 sources"
+    },
+    {
+      "check": "legality.no_google_assets",
+      "status": "PASS",
+      "detail": "clean"
+    }
+  ],
+  "summary": {
+    "total": 16,
+    "failed": 0
+  }
+}

@@ -1,0 +1,52 @@
+name: Chelmek contract (W0)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "chelmek-explore/**"
+  pull_request:
+    paths:
+      - "chelmek-explore/**"
+  workflow_dispatch:
+
+jobs:
+  contract:
+    name: freeze gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: chelmek-explore
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install cross-check dependencies
+        run: pip install --quiet pyproj
+
+      - name: Geo transform self-check
+        run: python3 Scripts/geo_to_ue.py --self-check
+
+      - name: Validate frozen contract
+        run: python3 Scripts/validate_contract.py
+
+      - name: Contract tests (incl. negative gate tests)
+        run: python3 -m unittest discover -s Scripts/tests -t . -v
+
+      - name: Manifests are generated, never hand-edited
+        run: |
+          python3 Scripts/generate_poi_manifest.py
+          git diff --exit-code -- Data/POI/poi_manifest.csv Data/POI/branding_manifest.csv \
+            || (echo "::error::poi_manifest.csv / branding_manifest.csv drift from the generator. \
+Run Scripts/generate_poi_manifest.py and commit the result." && exit 1)
+
+      - name: Upload contract report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-report
+          path: chelmek-explore/evidence/contract_report.json
+          if-no-files-found: warn

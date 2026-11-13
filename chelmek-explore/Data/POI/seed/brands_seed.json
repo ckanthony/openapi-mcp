@@ -1,0 +1,96 @@
+{
+  "_comment": [
+    "Brand declarations. mode=fallback everywhere because no trademark licence",
+    "has been obtained yet (blocker B2 in docs/W0_BLOCKERS.md). Sign geometry",
+    "is frozen so switching BrandingManifest to 'licensed' later is a material",
+    "swap, not a re-layout of the world.",
+    "fallback_name must be a neutral Polish generic, never a look-alike of the",
+    "real mark."
+  ],
+  "brands": [
+    {
+      "brand_id": "brand_lidl",
+      "real_name": "Lidl",
+      "fallback_name": "Market Spożywczy",
+      "mode": "fallback",
+      "sign_w_cm": 900,
+      "sign_h_cm": 180,
+      "sign_color_hex": "#0050AA",
+      "emissive_night": true,
+      "holds_trademark": true,
+      "consent_ref": "",
+      "consent_expires": "",
+      "fallback_asset": "/Game/Chelmek/POI/Brands/Fallback/MarketSpoleczy"
+    },
+    {
+      "brand_id": "brand_biedronka",
+      "real_name": "Biedronka",
+      "fallback_name": "Sklep Dyskontowy",
+      "mode": "fallback",
+      "sign_w_cm": 900,
+      "sign_h_cm": 180,
+      "sign_color_hex": "#D4002A",
+      "emissive_night": true,
+      "holds_trademark": true,
+      "consent_ref": "",
+      "consent_expires": "",
+      "fallback_asset": "/Game/Chelmek/POI/Brands/Fallback/SklepDyskontowy"
+    },
+    {
+      "brand_id": "brand_rossmann",
+      "real_name": "Rossmann",
+      "fallback_name": "Drogeria",
+      "mode": "fallback",
+      "sign_w_cm": 600,
+      "sign_h_cm": 120,
+      "sign_color_hex": "#C8102E",
+      "emissive_night": true,
+      "holds_trademark": true,
+      "consent_ref": "",
+      "consent_expires": "",
+      "fallback_asset": "/Game/Chelmek/POI/Brands/Fallback/Drogeria"
+    },
+    {
+      "brand_id": "brand_zabka",
+      "real_name": "Żabka",
+      "fallback_name": "Sklep Osiedlowy",
+      "mode": "fallback",
+      "sign_w_cm": 400,
+      "sign_h_cm": 90,
+      "sign_color_hex": "#00A94F",
+      "emissive_night": true,
+      "holds_trademark": true,
+      "consent_ref": "",
+      "consent_expires": "",
+      "fallback_asset": "/Game/Chelmek/POI/Brands/Fallback/SklepOsiedlowy"
+    },
+    {
+      "brand_id": "brand_ptys",
+      "real_name": "Ptyś",
+      "fallback_name": "Cukiernia",
+      "mode": "fallback",
+      "sign_w_cm": 300,
+      "sign_h_cm": 80,
+      "sign_color_hex": "#8B5E3C",
+      "emissive_night": true,
+      "holds_trademark": true,
+      "consent_ref": "",
+      "consent_expires": "",
+      "fallback_asset": "/Game/Chelmek/POI/Brands/Fallback/Cukiernia"
+    },
+    {
+      "brand_id": "brand_cizemka",
+      "real_name": "Ciżemka",
+      "fallback_name": "Pizzeria",
+      "mode": "fallback",
+      "sign_w_cm": 400,
+      "sign_h_cm": 100,
+      "sign_color_hex": "#B23A2E",
+      "emissive_night": true,
+      "holds_trademark": true,
+      "consent_ref": "",
+      "consent_expires": "",
+      "fallback_asset": "/Game/Chelmek/POI/Brands/Fallback/Pizzeria"
+    }
+  ]
+}

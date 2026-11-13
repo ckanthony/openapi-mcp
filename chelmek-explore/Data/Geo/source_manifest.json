@@ -1,0 +1,104 @@
+{
+  "schema_version": "1.0.0",
+  "bbox": {
+    "lat_min": 50.0881157,
+    "lat_max": 50.1341934,
+    "lon_min": 19.2227522,
+    "lon_max": 19.2773330
+  },
+  "origin": {
+    "lat": 50.1003348,
+    "lon": 19.2542585,
+    "epsg2180_x": 518178.544,
+    "epsg2180_y": 248151.823
+  },
+  "crs": {
+    "source": "EPSG:4326",
+    "working": "EPSG:2180",
+    "engine": "local ENU",
+    "unit": "cm"
+  },
+  "sources": [
+    {
+      "source_id": "src_bdot10k",
+      "layer": "buildings",
+      "provider": "GUGiK / Geoportal.gov.pl",
+      "license": "BDOT10k - free, commercial use permitted with attribution",
+      "url": "https://www.geoportal.gov.pl/en/data/topographic-objects-database-bdot10k/",
+      "retrieved_at": null,
+      "status": "not-downloaded",
+      "notes": "Required before W1/W3. Needs manual download of the 50.08-50.14 N / 19.22-19.28 E tiles; the sandbox has no route to geoportal.gov.pl."
+    },
+    {
+      "source_id": "src_nmt_nmpt",
+      "layer": "terrain",
+      "provider": "GUGiK / Geoportal.gov.pl (NMT, NMPT, ALS LiDAR)",
+      "license": "GUGiK open data - free with attribution",
+      "url": "https://www.geoportal.gov.pl/en/data/",
+      "retrieved_at": null,
+      "status": "not-downloaded",
+      "notes": "Heightmap, tree crowns, roof heights. Blocks W1 Mesh Terrain and validate_distances.py."
+    },
+    {
+      "source_id": "src_egib",
+      "layer": "buildings",
+      "provider": "Powiat oświęcimski - EGiB via SIP",
+      "license": "public register extract, attribution required",
+      "url": "https://sip.gison.pl/chelmek",
+      "retrieved_at": null,
+      "status": "not-downloaded",
+      "notes": "Highest-weight source for footprints and parcels (EGiB > BDOT10k > OSM)."
+    },
+    {
+      "source_id": "src_mpzp",
+      "layer": "plans",
+      "provider": "Gmina Chełmek - MPZP / studium",
+      "license": "official-site",
+      "url": "https://chelmek.pl/miasto-i-gmina/planowanie-przestrzenne",
+      "retrieved_at": null,
+      "status": "not-downloaded",
+      "notes": "Building lines, height limits, roof form, land use. Blocks the 6-typology rule."
+    },
+    {
+      "source_id": "src_prg",
+      "layer": "addresses",
+      "provider": "GUGiK PRG + punkty adresowe",
+      "license": "GUGiK open data - free with attribution",
+      "url": "https://www.geoportal.gov.pl/en/data/",
+      "retrieved_at": null,
+      "status": "not-downloaded",
+      "notes": "Street names, house numbers, POI anchors."
+    },
+    {
+      "source_id": "src_osm",
+      "layer": "poi",
+      "provider": "OpenStreetMap contributors",
+      "license": "ODbL-1.0",
+      "url": "https://www.openstreetmap.org/copyright",
+      "retrieved_at": "2026-11-12",
+      "status": "present",
+      "local_path": "Data/POI/seed/poi_seed.json",
+      "notes": "Present only as a derived extract inherited from the web game (city.json). Overpass and Nominatim are unreachable from this sandbox, so a fresh extract needs a machine with internet access."
+    },
+    {
+      "source_id": "src_orto",
+      "layer": "ortho",
+      "provider": "GUGiK ORTO / high-resolution orthophoto",
+      "license": "GUGiK open data - free with attribution",
+      "url": "https://mapy.geoportal.gov.pl/",
+      "retrieved_at": null,
+      "status": "not-downloaded",
+      "notes": "Reference for colour and layout verification only. Never a texture source for the shipped build."
+    },
+    {
+      "source_id": "src_scans",
+      "layer": "scans",
+      "provider": "own photogrammetry (roadmap W2)",
+      "license": "own-survey",
+      "url": "",
+      "retrieved_at": null,
+      "status": "not-downloaded",
+      "notes": "25 hero objects; requires field capture and owner consents. Not started."
+    }
+  ]
+}

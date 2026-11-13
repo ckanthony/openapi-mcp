@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chelmek-explore.local/schemas/branding_manifest.schema.json",
+  "title": "branding_manifest.csv row (SCHEMA_VERSION 1.0.0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "brand_id", "real_name", "fallback_name", "poi_ids", "mode",
+    "sign_w_cm", "sign_h_cm", "sign_color_hex", "emissive_night",
+    "holds_trademark", "consent_ref", "consent_expires", "fallback_asset"
+  ],
+  "properties": {
+    "brand_id": { "type": "string", "pattern": "^brand_[a-z0-9_]+$" },
+    "real_name": { "type": "string" },
+    "fallback_name": { "type": "string", "minLength": 1 },
+    "poi_ids": { "type": "string", "pattern": "^poi_[a-z0-9_]+(;poi_[a-z0-9_]+)*$" },
+    "mode": { "type": "string", "enum": ["licensed", "fallback"] },
+    "sign_w_cm": { "type": "integer", "exclusiveMinimum": 0 },
+    "sign_h_cm": { "type": "integer", "exclusiveMinimum": 0 },
+    "sign_color_hex": { "type": "string", "pattern": "^#[0-9A-F]{6}$" },
+    "emissive_night": { "type": "boolean" },
+    "holds_trademark": { "type": "boolean" },
+    "consent_ref": { "type": "string" },
+    "consent_expires": { "type": "string", "pattern": "^$|^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "fallback_asset": { "type": "string", "minLength": 1 }
+  }
+}
