@@ -1,0 +1,31 @@
+{
+  "name": "chelmek-explore-launcher",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Che\u0142mek EXPLORE web launcher \u2014 Carbon Design System (IBM) frontend for the UE5 build.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 8080",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 8080",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/csv.test.ts src/game/geometry.test.ts",
+    "build:single": "vite build --config vite.singlefile.config.ts && cp dist-single/index.html ../docs/chelmek-gra.html"
+  },
+  "dependencies": {
+    "@carbon/icons-react": "^11.68.0",
+    "@carbon/react": "1.120.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "three": "^0.181.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.1",
+    "@types/three": "^0.181.0",
+    "@vitejs/plugin-react": "5.0.4",
+    "sass": "1.93.3",
+    "typescript": "5.9.3",
+    "vite": "7.1.9"
+  }
+}

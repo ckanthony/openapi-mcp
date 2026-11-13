@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chelmek-explore.local/schemas/poi_manifest.schema.json",
+  "title": "poi_manifest.csv row (SCHEMA_VERSION 1.0.0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "poi_id",
+    "name",
+    "brand",
+    "category",
+    "lat_wgs84",
+    "lon_wgs84",
+    "epsg2180_x",
+    "epsg2180_y",
+    "ue_x_cm",
+    "ue_y_cm",
+    "ue_z_cm",
+    "street",
+    "housenumber",
+    "postal_code",
+    "entrance_yaw",
+    "source_url",
+    "source_license",
+    "branding_status",
+    "sign_asset",
+    "banner_asset",
+    "interior_asset",
+    "opening_hours",
+    "enterable",
+    "verified",
+    "notes"
+  ],
+  "properties": {
+    "poi_id": { "type": "string", "pattern": "^poi_[a-z0-9_]+$" },
+    "name": { "type": "string", "minLength": 1 },
+    "brand": { "type": "string" },
+    "category": {
+      "type": "string",
+      "enum": [
+        "discount", "grocery", "drogeria", "fuel", "bakery", "cafe",
+        "restaurant", "hair", "pharmacy", "clinic", "school", "kindergarten",
+        "church", "civic", "post", "bank", "sport", "playground",
+        "bus_stop", "park", "cemetery", "tourist", "other"
+      ]
+    },
+    "lat_wgs84": { "type": "number", "minimum": 50.0881157, "maximum": 50.1341934 },
+    "lon_wgs84": { "type": "number", "minimum": 19.2227522, "maximum": 19.2773330 },
+    "epsg2180_x": { "type": "number" },
+    "epsg2180_y": { "type": "number" },
+    "ue_x_cm": { "type": "integer" },
+    "ue_y_cm": { "type": "integer" },
+    "ue_z_cm": { "type": "integer" },
+    "street": { "type": "string" },
+    "housenumber": { "type": "string" },
+    "postal_code": { "type": "string", "pattern": "^$|^[0-9]{2}-[0-9]{3}$" },
+    "entrance_yaw": { "type": "number", "minimum": 0, "exclusiveMaximum": 360 },
+    "source_url": { "type": "string" },
+    "source_license": {
+      "type": "string",
+      "enum": ["ODbL-1.0", "official-site", "PRG", "EGiB", "BDOT10k", "own-survey", "unverified"]
+    },
+    "branding_status": {
+      "type": "string",
+      "enum": ["licensed", "fallback", "unverified", "not-applicable"]
+    },
+    "sign_asset": { "type": "string" },
+    "banner_asset": { "type": "string" },
+    "interior_asset": { "type": "string" },
+    "opening_hours": { "type": "string", "minLength": 1 },
+    "enterable": { "type": "boolean" },
+    "verified": { "type": "boolean" },
+    "notes": { "type": "string" }
+  }
+}
