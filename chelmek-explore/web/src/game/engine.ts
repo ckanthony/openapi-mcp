@@ -58,12 +58,25 @@ function ringShape(ring: [number, number][], target: THREE.Shape | THREE.Path) {
   return target;
 }
 
+// A phone at devicePixelRatio 3 on a full-screen canvas asks the GPU to fill
+// up to ~13 million pixels per frame. That is what turns a working scene into
+// a black screen on mobile, so the ratio is capped hard and phones get less.
+function pixelRatioCap(): number {
+  const dpr = window.devicePixelRatio || 1;
+  const small = Math.min(window.innerWidth, window.innerHeight) < 820;
+  return Math.min(dpr, small ? 1.25 : 1.75);
+}
+
 export function createGame(container: HTMLElement): GameHandle {
   const renderer = new THREE.WebGLRenderer({
-    antialias: true,
+    // MSAA on a high-DPI phone screen is expensive and barely visible; the
+    // pixel ratio already delivers most of the perceived sharpness.
+    antialias: (window.devicePixelRatio || 1) < 2,
     powerPreference: "high-performance",
+    // Do not fail hard when the browser hands out a weaker context.
+    failIfMajorPerformanceCaveat: false,
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(pixelRatioCap());
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.shadowMap.enabled = false;
   container.appendChild(renderer.domElement);
@@ -107,95 +120,112 @@ export function createGame(container: HTMLElement): GameHandle {
   ground.receiveShadow = false;
   scene.add(ground);
 
-  // --- greens (parks, forest, grass) -----------------------------------
-  const gardenMat = new THREE.MeshStandardMaterial({ color: "#33452c", roughness: 1 });
-  const forestMat = new THREE.MeshStandardMaterial({ color: "#243424", roughness: 1 });
-  const pitchMat = new THREE.MeshStandardMaterial({ color: "#2f4a33", roughness: 1 });
-
-  for (const g of greens) {
-    if (g.ring.length < 3) continue;
-    const shape = new THREE.Shape();
-    ringShape(g.ring, shape);
-    const geo = new THREE.ShapeGeometry(shape);
-    const mat = g.kind === "forest" ? forestMat : g.kind === "pitch" ? pitchMat : gardenMat;
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.x = Math.PI / 2;
-    mesh.position.y = -0.01;
-    scene.add(mesh);
-  }
-
-  // --- water: lakes filled, rivers as ribbons ---------------------------
-  const waterMat = new THREE.MeshStandardMaterial({
-    color: "#173247",
-    roughness: 0.18,
-    metalness: 0.35,
-  });
-  for (const lake of lakes) {
-    if (lake.length < 3) continue;
-    const shape = new THREE.Shape();
-    ringShape(lake, shape);
-    const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), waterMat);
-    mesh.rotation.x = Math.PI / 2;
-    mesh.position.y = -0.005;
-    scene.add(mesh);
-  }
-  for (const river of water) {
-    if (river.points.length < 2) continue;
-    const curve = new THREE.CatmullRomCurve3(
-      river.points.map(([x, z]) => new THREE.Vector3(x, 0, z)),
-      false,
-      "catmullrom",
-      0.2,
-    );
-    const geo = new THREE.TubeGeometry(curve, river.points.length * 2, 6, 3, false);
-    const mesh = new THREE.Mesh(geo, waterMat);
-    mesh.scale.y = 0.02;
-    mesh.position.y = 0.1;
-    scene.add(mesh);
-  }
-
-  // --- roads ------------------------------------------------------------
-  const roadMats: Record<string, THREE.MeshStandardMaterial> = {
-    main: new THREE.MeshStandardMaterial({ color: "#3b3f44", roughness: 0.95 }),
-    street: new THREE.MeshStandardMaterial({ color: "#33373c", roughness: 0.95 }),
-    service: new THREE.MeshStandardMaterial({ color: "#2b2f33", roughness: 1 }),
-    path: new THREE.MeshStandardMaterial({ color: "#3a3527", roughness: 1 }),
+  // --- ground detail: ONE merged vertex-coloured buffer -----------------
+  // Everything flat that is not a building goes into a single geometry.
+  // This is the difference between the game running and a black screen on a
+  // phone: drawing each of the 6945 road segments as its own mesh meant 7293
+  // draw calls per frame, and mobile GPUs choke long before that.
+  const flatPositions: number[] = [];
+  const flatColors: number[] = [];
+  const flatPush = (x: number, y: number, z: number, c: THREE.Color) => {
+    flatPositions.push(x, y, z);
+    flatColors.push(c.r, c.g, c.b);
   };
 
-  for (const road of roads) {
-    if (road.points.length < 2) continue;
-    const mat = roadMats[road.kind] ?? roadMats.street;
-    const half = Math.max(road.width, 1) / 2;
+  const C_GARDEN = new THREE.Color("#33452c");
+  const C_FOREST = new THREE.Color("#243424");
+  const C_PITCH = new THREE.Color("#2f4a33");
+  const C_LAKE = new THREE.Color("#173247");
+  const C_RIVER = new THREE.Color("#1b3a52");
+  const C_MAIN = new THREE.Color("#3b3f44");
+  const C_STREET = new THREE.Color("#33373c");
+  const C_SERVICE = new THREE.Color("#2b2f33");
+  const C_PATH = new THREE.Color("#3a3527");
+  const C_RAIL = new THREE.Color("#5a5348");
 
+  const ROAD_COLOR: Record<string, THREE.Color> = {
+    main: C_MAIN,
+    street: C_STREET,
+    service: C_SERVICE,
+    path: C_PATH,
+  };
+
+  // Triangulate a flat ring with THREE.Shape, then bake it into the buffer.
+  // Y is deliberately different per layer so nothing z-fights.
+  const bakeRing = (ring: [number, number][], y: number, colour: THREE.Color) => {
+    if (ring.length < 3) return;
+    const shape = new THREE.Shape();
+    ringShape(ring, shape);
+    const geo = new THREE.ShapeGeometry(shape);
+    const pos = geo.getAttribute("position");
+    // ShapeGeometry uses (x, y); our plane is (x, z) with the ring already in
+    // map coordinates, so y from the shape becomes world z directly.
+    for (let i = 0; i < pos.count; i += 1) {
+      flatPush(pos.getX(i), y, pos.getY(i), colour);
+    }
+    geo.dispose();
+  };
+
+  // A quad between two points, `width` wide, laid flat on the ground.
+  const bakeSegment = (ax: number, az: number, bx: number, bz: number, width: number, y: number, colour: THREE.Color) => {
+    const dx = bx - ax;
+    const dz = bz - az;
+    const len = Math.hypot(dx, dz);
+    if (len < 0.05) return;
+    const nx = (dz / len) * (width / 2);
+    const nz = (-dx / len) * (width / 2);
+    const x1 = ax + nx, z1 = az + nz;
+    const x2 = ax - nx, z2 = az - nz;
+    const x3 = bx - nx, z3 = bz - nz;
+    const x4 = bx + nx, z4 = bz + nz;
+    flatPush(x1, y, z1, colour);
+    flatPush(x2, y, z2, colour);
+    flatPush(x3, y, z3, colour);
+    flatPush(x1, y, z1, colour);
+    flatPush(x3, y, z3, colour);
+    flatPush(x4, y, z4, colour);
+  };
+
+  for (const g of greens) {
+    bakeRing(g.ring, -0.01, g.kind === "forest" ? C_FOREST : g.kind === "pitch" ? C_PITCH : C_GARDEN);
+  }
+  for (const lake of lakes) {
+    bakeRing(lake, -0.005, C_LAKE);
+  }
+  for (const river of water) {
+    for (let i = 0; i + 1 < river.points.length; i += 1) {
+      const [ax, az] = river.points[i];
+      const [bx, bz] = river.points[i + 1];
+      bakeSegment(ax, az, bx, bz, 6, 0.005, C_RIVER);
+    }
+  }
+  for (const road of roads) {
+    const colour = ROAD_COLOR[road.kind] ?? C_STREET;
+    const width = Math.max(road.width, 1);
     for (let i = 0; i + 1 < road.points.length; i += 1) {
       const [ax, az] = road.points[i];
       const [bx, bz] = road.points[i + 1];
-      const len = Math.hypot(bx - ax, bz - az);
-      if (len < 0.05) continue;
-      const geo = new THREE.PlaneGeometry(half * 2, len);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.rotation.z = Math.atan2(bx - ax, bz - az);
-      mesh.position.set((ax + bx) / 2, 0.012, (az + bz) / 2);
-      scene.add(mesh);
+      bakeSegment(ax, az, bx, bz, width, 0.012, colour);
     }
   }
-
-  // --- rail line --------------------------------------------------------
-  const railMat = new THREE.MeshStandardMaterial({ color: "#5a5348", roughness: 0.8 });
   for (const rail of rails) {
     for (let i = 0; i + 1 < rail.length; i += 1) {
       const [ax, az] = rail[i];
       const [bx, bz] = rail[i + 1];
-      const len = Math.hypot(bx - ax, bz - az);
-      if (len < 0.05) continue;
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.6, len), railMat);
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.rotation.z = Math.atan2(bx - ax, bz - az);
-      mesh.position.set((ax + bx) / 2, 0.02, (az + bz) / 2);
-      scene.add(mesh);
+      bakeSegment(ax, az, bx, bz, 2.6, 0.02, C_RAIL);
     }
   }
+
+  const flatGeo = new THREE.BufferGeometry();
+  flatGeo.setAttribute("position", new THREE.Float32BufferAttribute(flatPositions, 3));
+  flatGeo.setAttribute("color", new THREE.Float32BufferAttribute(flatColors, 3));
+  flatGeo.computeBoundingSphere();
+  // One material, no lighting: these are flat ground decals, all detail comes
+  // from vertex colour. Basic is also much cheaper than Standard on mobile.
+  const flatMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+  const flatMesh = new THREE.Mesh(flatGeo, flatMat);
+  flatMesh.frustumCulled = true;
+  scene.add(flatMesh);
 
   // --- buildings: one merged buffer per material, 3 palettes ------------
   // Merging matters: 2731 separate meshes would cost thousands of draw calls.
@@ -412,6 +442,7 @@ export function createGame(container: HTMLElement): GameHandle {
     if (w === 0 || h === 0) return;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    renderer.setPixelRatio(pixelRatioCap());
     renderer.setSize(w, h);
   }
   const ro = new ResizeObserver(onResize);
@@ -424,6 +455,8 @@ export function createGame(container: HTMLElement): GameHandle {
       ro.disconnect();
       cityGeo.dispose();
       cityMat.dispose();
+      flatGeo.dispose();
+      flatMat.dispose();
       poiGeo.dispose();
       poiMat.dispose();
       groundGeo.dispose();
