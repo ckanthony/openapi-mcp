@@ -23,13 +23,27 @@ export function GameView({ onExit }: { onExit: () => void }) {
   });
   const [nearPoi, setNearPoi] = useState<Poi | null>(null);
   const [showHelp, setShowHelp] = useState(true);
+  // Without this the whole React tree unmounts on a WebGL failure and the
+  // player is left staring at a black screen with no explanation -- which is
+  // exactly what happened on a phone before this was added.
+  const [fatal, setFatal] = useState<string | null>(null);
 
   // --- lifecycle --------------------------------------------------------
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const game = createGame(host);
+
+    let game: GameHandle;
+    try {
+      game = createGame(host);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[chelmek] createGame failed:", err);
+      setFatal(message);
+      return;
+    }
     gameRef.current = game;
+    if (!game.isReady()) setFatal("scena nie została zainicjowana");
 
     const interval = window.setInterval(() => {
       const s = game.getStats();
@@ -159,6 +173,26 @@ export function GameView({ onExit }: { onExit: () => void }) {
       onPointerCancel={endDrag}
     >
       <div className="game__canvas" ref={hostRef} />
+
+      {fatal ? (
+        <div className="game__fatal" role="alert">
+          <h2>Grafika 3D nie wystartowała</h2>
+          <p>
+            Przeglądarka nie udostępniła kontekstu WebGL, więc nie ma czego
+            narysować. To ograniczenie urządzenia lub przeglądarki, nie brak
+            danych o Chełmku.
+          </p>
+          <ul>
+            <li>Włącz akcelerację sprzętową w ustawieniach przeglądarki.</li>
+            <li>Zamknij inne karty z grafika 3D i odśwież stronę.</li>
+            <li>Spróbuj w Chrome lub Firefoksie na komputerze.</li>
+          </ul>
+          <p className="game__fatal-detail">Szczegóły techniczne: {fatal}</p>
+          <Button kind="ghost" size="sm" onClick={onExit}>
+            Wróć do strony głównej
+          </Button>
+        </div>
+      ) : null}
 
       <div className="hud">
         <div className="hud__top">
