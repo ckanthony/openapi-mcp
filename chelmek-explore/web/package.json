@@ -3,13 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Chełmek EXPLORE web launcher — Carbon Design System (IBM) frontend for the UE5 build.",
+  "description": "Che\u0142mek EXPLORE web launcher \u2014 Carbon Design System (IBM) frontend for the UE5 build.",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 8080",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 8080",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/csv.test.ts src/game/geometry.test.ts"
+    "test": "node --experimental-strip-types --test src/csv.test.ts src/game/geometry.test.ts",
+    "build:single": "vite build --config vite.singlefile.config.ts && cp dist-single/index.html ../docs/chelmek-gra.html"
   },
   "dependencies": {
     "@carbon/icons-react": "^11.68.0",
