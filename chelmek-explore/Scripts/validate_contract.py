@@ -57,9 +57,20 @@ FROZEN_COLUMNS = {
 EPSG_TOL_M = 0.005
 UE_TOL_CM = 2
 
+# Matches actual Google asset/service ENDPOINTS, not the words "Google Maps"
+# in prose. Documentation is allowed to discuss the prohibition; it is not
+# allowed to carry a working reference to a tile, panorama or Places call.
 GOOGLE_FORBIDDEN = re.compile(
-    r"(googleapis\.com/maps|maps\.google|streetview|google\.com/maps|"
-    r"ggpht\.com|khms\d|mt\d\.google\.com/vt)",
+    r"("
+    r"googleapis\.com/maps"
+    r"|maps\.google\.[a-z]{2,}"
+    r"|google\.[a-z.]+/maps/(?!documentation)"
+    r"|ggpht\.com"
+    r"|khms\d"
+    r"|mt\d\.google\.com/vt"
+    r"|maps/api/streetview"
+    r"|streetviewpublish"
+    r")",
     re.IGNORECASE,
 )
 

@@ -1,0 +1,220 @@
+// Carbon Design System (IBM) — Apache-2.0
+// Only the styles for the components actually used are pulled in, so the
+// launcher ships ~40 kB of component CSS instead of the whole library.
+@use "@carbon/react/scss/type";
+@use "@carbon/react/scss/spacing";
+@use "@carbon/react/scss/breakpoint";
+@use "@carbon/react/scss/theme";
+
+// component styles
+@use "@carbon/react/scss/components/button";
+@use "@carbon/react/scss/components/tag";
+@use "@carbon/react/scss/components/tile";
+@use "@carbon/react/scss/components/ui-shell";
+@use "@carbon/react/scss/components/data-table";
+@use "@carbon/react/scss/components/inline-loading";
+@use "@carbon/react/scss/components/notification";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--cds-background);
+  color: var(--cds-text-primary);
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app__main {
+  flex: 1;
+  padding: spacing.$spacing-07 spacing.$spacing-07 spacing.$spacing-10;
+  max-width: 96rem;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.hero {
+  max-width: 46rem;
+  margin-bottom: spacing.$spacing-09;
+
+  h1 {
+    @include type.type-style("heading-05");
+    margin: 0 0 spacing.$spacing-05;
+  }
+
+  p {
+    @include type.type-style("body-long-02");
+    color: var(--cds-text-secondary);
+    margin: 0 0 spacing.$spacing-06;
+  }
+}
+
+.hero__eyebrow {
+  @include type.type-style("label-01");
+  color: var(--cds-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: block;
+  margin-bottom: spacing.$spacing-05;
+}
+
+.hero__actions {
+  display: flex;
+  gap: spacing.$spacing-05;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1px;
+  background: var(--cds-border-subtle);
+  border: 1px solid var(--cds-border-subtle);
+  margin-bottom: spacing.$spacing-09;
+}
+
+.stat {
+  background: var(--cds-layer);
+  padding: spacing.$spacing-06;
+  display: flex;
+  flex-direction: column;
+  gap: spacing.$spacing-03;
+}
+
+.stat__value {
+  @include type.type-style("heading-06");
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.stat__label {
+  @include type.type-style("label-01");
+  color: var(--cds-text-secondary);
+}
+
+.stat__note {
+  @include type.type-style("label-01");
+  color: var(--cds-text-helper);
+}
+
+.section {
+  margin-bottom: spacing.$spacing-09;
+}
+
+.section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: spacing.$spacing-05;
+  margin-bottom: spacing.$spacing-05;
+  flex-wrap: wrap;
+
+  h2 {
+    @include type.type-style("heading-03");
+    margin: 0;
+  }
+}
+
+.section__hint {
+  @include type.type-style("label-01");
+  color: var(--cds-text-helper);
+  max-width: 42rem;
+}
+
+.poi-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.poi-cell__name {
+  font-weight: 600;
+}
+
+.poi-cell__meta {
+  @include type.type-style("label-01");
+  color: var(--cds-text-secondary);
+}
+
+.mono {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.roadmap {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--cds-border-subtle);
+  border: 1px solid var(--cds-border-subtle);
+}
+
+.roadmap__row {
+  background: var(--cds-layer);
+  padding: spacing.$spacing-05 spacing.$spacing-06;
+  display: grid;
+  grid-template-columns: 4.5rem 1fr auto;
+  gap: spacing.$spacing-05;
+  align-items: center;
+}
+
+.roadmap__step {
+  @include type.type-style("label-01");
+  color: var(--cds-text-secondary);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.roadmap__name {
+  @include type.type-style("body-compact-01");
+}
+
+.blocker {
+  margin-bottom: spacing.$spacing-05;
+}
+
+.footer {
+  border-top: 1px solid var(--cds-border-subtle);
+  padding: spacing.$spacing-06 spacing.$spacing-07;
+  color: var(--cds-text-secondary);
+
+  p {
+    @include type.type-style("label-01");
+    margin: 0 0 spacing.$spacing-03;
+  }
+}
+
+@media (max-width: 42rem) {
+  .app__main {
+    padding: spacing.$spacing-06 spacing.$spacing-05;
+  }
+
+  .roadmap__row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "step tag"
+      "name name";
+    row-gap: spacing.$spacing-03;
+  }
+
+  .roadmap__step {
+    grid-area: step;
+  }
+
+  .roadmap__name {
+    grid-area: name;
+  }
+
+  .roadmap__row .cds--tag {
+    grid-area: tag;
+  }
+}

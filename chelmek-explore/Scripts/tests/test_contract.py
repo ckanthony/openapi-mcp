@@ -91,7 +91,9 @@ class TestContractGate(unittest.TestCase):
         shutil.copytree(
             ROOT,
             self.root,
-            ignore=shutil.ignore_patterns(".git", "__pycache__", "evidence"),
+            ignore=shutil.ignore_patterns(
+                ".git", "__pycache__", "evidence", "node_modules", "dist",
+            ),
         )
 
     def tearDown(self):

@@ -75,3 +75,28 @@ the cheapest real progress before those unblock is:
 2. **B2 in parallel** — the licence table is a paper task, no GPU needed.
 3. Then W5's re-derivation (fixes B4) before any interior modelling, so W3 is
    built on confirmed entrances rather than seed coordinates.
+
+---
+
+## Appendix — web launcher (added after W0)
+
+`chelmek-explore/web/` is a working Vite + React + **IBM Carbon Design System**
+launcher (`@carbon/react@1.120.0`), deployed as a static site. It is not a
+roadmap step of its own; it belongs to **W12** (the `web/` frontend half) and is
+kept honest by reading `Data/POI/*.csv`, `ROADMAP_STATUS.md` and
+`SCHEMA_VERSION` at build time.
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | ✅ clean |
+| `npm test` (CSV contract, 8 tests) | ✅ 8/8 |
+| `npm run build` | ✅ 934 modules, css 24.8 kB gzip, js 96.0 kB gzip |
+| `npm run dev` on `0.0.0.0:8080` | ✅ serving |
+| No `localhost` in built bundle | ✅ |
+| No Google references in source | ✅ |
+
+State of the requested repository links is documented in
+`docs/WEB_CARBON.md`: `carbon-design-system/carbon` is connected as an npm
+dependency; `carbon-app/carbon` is **not on npm** (only an unmaintained
+third-party `carbon-cli` from 2018) and was therefore not wired in — three
+options are listed there awaiting a decision.
