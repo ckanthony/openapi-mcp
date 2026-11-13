@@ -121,11 +121,19 @@ The Vercel connector authenticates as `amadii90210-dev`
 and every project/deployment call returns **Access denied**:
 
 ```
-list_projects   -> Access denied
-create_deployment -> Access denied
+validate_credential          -> success  (token IS valid)
+get_authenticated_user       -> success  (amadii90210-dev)
+list_projects   (user scope) -> Access denied
+list_projects   (team scope) -> Access denied
+create_deployment (git)      -> Access denied
+create_deployment (files)    -> Access denied
+create_project               -> Access denied
 ```
 
-So **no public URL could be produced from here.** To get one:
+Every write path was tried, including uploading the built `dist/` directly as
+files (a different API surface from git deploys) and creating the project first.
+All blocked at the token scope, so **no public URL could be produced from
+here.** To get one:
 
 1. Reconnect Vercel in Arena with a token that has project + deployment write
    scope, or
